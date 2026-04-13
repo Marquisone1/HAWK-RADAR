@@ -3,6 +3,7 @@ import re
 import threading
 from datetime import datetime, timezone
 from html import unescape
+from urllib.parse import urlparse
 
 import feedparser
 from bs4 import BeautifulSoup
@@ -36,8 +37,68 @@ _FP_DOMAINS = {
     'example.com', 'example.org', 'example.net',
 }
 
+_COMMON_BENIGN_DOMAINS = {
+    'cisa.gov', 'nist.gov', 'dfn-cert.de', 'bsi.bund.de', 'heise.de',
+    'crowdstrike.com', 'talosintelligence.com', 'bleepingcomputer.com',
+    'thehackernews.com', 'krebsonsecurity.com', 'sans.org', 'sans.edu',
+    'exploit-db.com', 'github.com', 'microsoft.com', 'google.com',
+    'youtube.com', 'twitter.com', 'x.com', 'facebook.com', 'linkedin.com',
+}
 
-def extract_iocs(text: str) -> dict:
+_SUSPICIOUS_DOMAIN_TLDS = {'ru', 'cn', 'top', 'xyz', 'club', 'online', 'site', 'biz', 'info'}
+_DOMAIN_CONTEXT_KEYWORDS = {
+    'domain', 'domains', 'ioc', 'iocs', 'indicator', 'indicators', 'malicious',
+    'phishing', 'c2', 'callback', 'beacon', 'botnet', 'host', 'server',
+    'dns', 'resolves', 'redirect', 'payload', 'download', 'contact', 'cnc'
+}
+
+
+def _registrable_domain(hostname: str) -> str:
+    host = (hostname or '').lower().strip('.')
+    if not host:
+        return ''
+    parts = host.split('.')
+    if len(parts) <= 2:
+        return host
+    if host.endswith('.co.uk'):
+        return '.'.join(parts[-3:])
+    return '.'.join(parts[-2:])
+
+
+def _build_ignored_domains(urls: list[str] | None = None) -> set[str]:
+    ignored = set(_FP_DOMAINS)
+    ignored.update(_COMMON_BENIGN_DOMAINS)
+
+    for value in urls or []:
+        if not value:
+            continue
+        hostname = urlparse(value).hostname or ''
+        hostname = hostname.lower().strip('.')
+        if not hostname:
+            continue
+        ignored.add(hostname)
+        ignored.add(_registrable_domain(hostname))
+
+    return {domain for domain in ignored if domain}
+
+
+def _domain_has_ioc_context(text: str, start: int, end: int, domain: str) -> bool:
+    domain_lower = domain.lower()
+    if 'xn--' in domain_lower:
+        return True
+
+    parts = domain_lower.rsplit('.', 1)
+    tld = parts[1] if len(parts) == 2 else ''
+    if tld in _SUSPICIOUS_DOMAIN_TLDS:
+        return True
+
+    window_start = max(0, start - 80)
+    window_end = min(len(text), end + 80)
+    context = text[window_start:window_end].lower()
+    return any(keyword in context for keyword in _DOMAIN_CONTEXT_KEYWORDS)
+
+
+def extract_iocs(text: str, ignored_domains: set[str] | None = None) -> dict:
     if not text:
         return {"ips": [], "domains": [], "cves": [], "hashes": []}
 
@@ -45,8 +106,21 @@ def extract_iocs(text: str) -> dict:
     # Filter private/loopback IPs
     ips = [ip for ip in ips if not ip.startswith(('10.', '127.', '0.', '192.168.', '169.254.'))]
 
-    domains = list(set(_DOMAIN_RE.findall(text)))
-    domains = [d.lower() for d in domains if d.lower() not in _FP_DOMAINS]
+    ignored_domains = {domain.lower() for domain in (ignored_domains or set())}
+    filtered_domains = []
+    for match in _DOMAIN_RE.finditer(text):
+        domain_lower = match.group(0).lower().strip('.')
+        if not domain_lower:
+            continue
+        if domain_lower.startswith('www.'):
+            continue
+        domain_root = _registrable_domain(domain_lower)
+        if domain_lower in ignored_domains or domain_root in ignored_domains:
+            continue
+        if not _domain_has_ioc_context(text, match.start(), match.end(), domain_lower):
+            continue
+        filtered_domains.append(domain_lower)
+    domains = filtered_domains
     # Deduplicate case-insensitive
     domains = list(set(domains))
 
@@ -240,7 +314,8 @@ def fetch_feed(feed: RSSFeed) -> int:
 
             # Classify and extract
             tags = extract_tags(title, summary_text)
-            iocs = extract_iocs(f"{title} {summary_text}")
+            ignored_domains = _build_ignored_domains([feed.url, link])
+            iocs = extract_iocs(f"{title} {summary_text}", ignored_domains=ignored_domains)
             severity = classify_severity(title, summary_text, tags=tags, iocs=iocs)
 
             item = FeedItem(

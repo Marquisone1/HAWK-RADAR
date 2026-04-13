@@ -18,7 +18,7 @@ from flask import (
 )
 
 from .auth import _is_rate_limited, require_admin, validate_password_strength, web_login_required
-from .models import FeedItem, RSSFeed, SiteUser, User, db
+from .models import FeedItem, RSSFeed, SiteUser, User, Watchlist, db
 
 logger = logging.getLogger(__name__)
 
@@ -37,17 +37,41 @@ SECTOR_KEYWORDS = {
 }
 
 
+def _watchlist_haystack(item):
+    iocs = item.iocs or {}
+    haystack_parts = [item.title or "", item.summary or "", " ".join(item.tags or [])]
+    haystack_parts.extend(iocs.get("cves", []))
+    return " ".join(haystack_parts).lower()
+
+
+def _matched_watchlist_terms(item, terms):
+    haystack = _watchlist_haystack(item)
+    return [term for term in terms if term.lower() in haystack]
+
+
+def _watchlist_terms_for_request(selected_term: str | None = None) -> list[str]:
+    user_id = session.get("site_user_id")
+    if not user_id:
+        return []
+    if selected_term:
+        term = selected_term.strip()
+        return [term] if term else []
+    watchlist_items = Watchlist.query.filter_by(user_id=user_id).order_by(Watchlist.created_at.desc()).all()
+    return [item.term.strip() for item in watchlist_items if item.term and item.term.strip()]
+
+
 def _apply_feed_item_filters(query, args, include_feed_id=True):
     severity = args.get("severity", "").strip().lower()
     feed_id = args.get("feed_id", default=None, type=int)
     tag = args.get("tag", "").strip().lower()
     search = args.get("search", "").strip()
     starred = args.get("starred", "").strip().lower()
-    unread = args.get("unread", "").strip().lower()
     country = args.get("country", "").strip().lower()
     time_range = args.get("time_range", "").strip().lower()
     has_cves = args.get("has_cves", "").strip().lower()
     has_iocs = args.get("has_iocs", "").strip().lower()
+    watchlist = args.get("watchlist", "").strip().lower()
+    watchlist_term = args.get("watchlist_term", "").strip()
     category = args.get("category", "").strip()
     sector = args.get("sector", "").strip().lower()
 
@@ -63,7 +87,14 @@ def _apply_feed_item_filters(query, args, include_feed_id=True):
             query = query.filter(db.literal(False))
     if category:
         category_feeds = [f.id for f in RSSFeed.query.filter(RSSFeed.category.ilike(f"%{category}%")).all()]
-        if category_feeds:
+        if category.upper() == "CVE":
+            cve_conditions = [
+                db.and_(FeedItem.iocs_json.ilike('%"cves"%'), db.not_(FeedItem.iocs_json.ilike('%"cves": []%')))
+            ]
+            if category_feeds:
+                cve_conditions.append(FeedItem.feed_id.in_(category_feeds))
+            query = query.filter(db.or_(*cve_conditions))
+        elif category_feeds:
             query = query.filter(FeedItem.feed_id.in_(category_feeds))
         else:
             query = query.filter(db.literal(False))
@@ -83,6 +114,21 @@ def _apply_feed_item_filters(query, args, include_feed_id=True):
                 db.and_(FeedItem.iocs_json.ilike('%"hashes"%'), db.not_(FeedItem.iocs_json.ilike('%"hashes": []%'))),
             )
         )
+    if watchlist == "true" or watchlist_term:
+        terms = _watchlist_terms_for_request(watchlist_term)
+        if not terms:
+            query = query.filter(db.literal(False))
+        else:
+            watchlist_conditions = []
+            for term in terms:
+                pattern = f"%{term}%"
+                watchlist_conditions.extend([
+                    FeedItem.title.ilike(pattern),
+                    FeedItem.summary.ilike(pattern),
+                    FeedItem.tags_json.ilike(pattern),
+                    FeedItem.iocs_json.ilike(pattern),
+                ])
+            query = query.filter(db.or_(*watchlist_conditions))
     if sector and sector in SECTOR_KEYWORDS:
         sector_conditions = []
         for keyword in SECTOR_KEYWORDS[sector]:
@@ -107,8 +153,6 @@ def _apply_feed_item_filters(query, args, include_feed_id=True):
         )
     if starred == "true":
         query = query.filter(FeedItem.is_starred.is_(True))
-    if unread == "true":
-        query = query.filter(FeedItem.is_read.is_(False))
 
     return query
 
@@ -121,6 +165,12 @@ def _apply_feed_item_filters(query, args, include_feed_id=True):
 @web_login_required
 def index():
     return render_template("radar.html")
+
+
+@radar_bp.route("/watchlist", methods=["GET"])
+@web_login_required
+def watchlist_page():
+    return render_template("watchlist.html")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,7 +195,6 @@ def web_feed_items():
     filtered_stats = {}
     for sev in ("critical", "high", "medium", "low", "unknown"):
         filtered_stats[sev] = q.filter(FeedItem.severity == sev).count()
-    filtered_stats["unread"] = q.filter(FeedItem.is_read.is_(False)).count()
     time_labels = {"24h": "Last 24h", "7d": "Last 7d", "30d": "Last 30d"}
     if time_range in time_labels:
         filtered_stats["time_window_count"] = total
@@ -173,7 +222,6 @@ def web_feed_items():
             "iocs": item.iocs,
             "ioc_count": item.ioc_count,
             "cve_count": item.cve_count,
-            "is_read": item.is_read,
             "is_starred": item.is_starred,
         }
         for item in items
@@ -203,7 +251,6 @@ def web_analytics():
     now = _dt.utcnow()
     last_24h = FeedItem.query.filter(FeedItem.created_at >= now - _td(hours=24)).count()
     critical_count = FeedItem.query.filter(FeedItem.severity == "critical").count()
-    unread_count = FeedItem.query.filter(FeedItem.is_read.is_(False)).count()
 
     # Items by severity
     severity_counts = {}
@@ -218,6 +265,7 @@ def web_analytics():
     tag_counts = {}
     ioc_type_counts = {"ips": 0, "domains": 0, "cves": 0, "hashes": 0}
     top_iocs_raw = {}
+    cve_counts = {}
 
     for item in recent_items:
         if item.published:
@@ -237,10 +285,15 @@ def web_analytics():
             ioc_type_counts[ioc_type] += len(vals)
             for val in vals[:5]:  # limit per item to prevent skew
                 top_iocs_raw[val] = top_iocs_raw.get(val, 0) + 1
+        for cve in iocs.get("cves", []):
+            cve_counts[cve] = cve_counts.get(cve, 0) + 1
 
     by_day_sorted = sorted(by_day.items())
     top_tags = sorted(tag_counts.items(), key=lambda x: x[1], reverse=True)[:15]
     top_iocs = sorted(top_iocs_raw.items(), key=lambda x: x[1], reverse=True)[:15]
+    top_cves_sorted = sorted(cve_counts.items(), key=lambda x: x[1], reverse=True)[:20]
+    # Only expose CVE graph data when there are at least 5 distinct CVEs
+    cve_graph_data = [{"cve": c, "count": n} for c, n in top_cves_sorted] if len(cve_counts) >= 5 else []
 
     # Feed stats
     feeds = RSSFeed.query.all()
@@ -261,12 +314,12 @@ def web_analytics():
         "total": total,
         "last_24h": last_24h,
         "critical_count": critical_count,
-        "unread_count": unread_count,
         "severity_counts": severity_counts,
         "by_day": [{"date": d, **counts} for d, counts in by_day_sorted],
         "top_tags": [{"tag": t, "count": c} for t, c in top_tags],
         "top_iocs": [{"ioc": i, "count": c} for i, c in top_iocs],
         "ioc_type_counts": ioc_type_counts,
+        "cve_graph": cve_graph_data,
         "feed_stats": feed_stats,
     }), 200
 
@@ -317,7 +370,7 @@ def web_refresh():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Star / Read toggles
+# Star toggles
 # ─────────────────────────────────────────────────────────────────────────────
 
 
@@ -332,40 +385,95 @@ def web_toggle_star(item_id):
     return jsonify({"id": item_id, "is_starred": item.is_starred}), 200
 
 
-@radar_bp.route("/web/item/<int:item_id>/read", methods=["POST"])
+# ─────────────────────────────────────────────────────────────────────────────
+# Watchlist
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@radar_bp.route("/web/watchlist", methods=["GET"])
 @web_login_required
-def web_toggle_read(item_id):
-    item = FeedItem.query.get(item_id)
-    if not item:
-        return jsonify({"error": "Not found"}), 404
-    item.is_read = not item.is_read
+def web_watchlist_list():
+    user_id = session["site_user_id"]
+    items = Watchlist.query.filter_by(user_id=user_id).order_by(Watchlist.created_at.desc()).all()
+    return jsonify({"terms": [{"id": w.id, "term": w.term} for w in items]}), 200
+
+
+@radar_bp.route("/web/watchlist/matches", methods=["GET"])
+@web_login_required
+def web_watchlist_matches():
+    user_id = session["site_user_id"]
+    selected_term = request.args.get("term", "").strip()
+    terms = _watchlist_terms_for_request()
+
+    if not terms:
+        return jsonify({"items": [], "term_counts": {}}), 200
+
+    filters = []
+    for term in terms:
+        pattern = f"%{term}%"
+        filters.extend([
+            FeedItem.title.ilike(pattern),
+            FeedItem.summary.ilike(pattern),
+            FeedItem.tags_json.ilike(pattern),
+            FeedItem.iocs_json.ilike(pattern),
+        ])
+
+    matched_items = FeedItem.query.filter(db.or_(*filters)).order_by(FeedItem.published.desc()).all()
+    feed_names = {feed.id: feed.name for feed in RSSFeed.query.all()}
+
+    term_counts = {term: 0 for term in terms}
+    items = []
+    for item in matched_items:
+        matched_terms = _matched_watchlist_terms(item, terms)
+        if not matched_terms:
+            continue
+
+        for term in matched_terms:
+            term_counts[term] = term_counts.get(term, 0) + 1
+
+        if selected_term and selected_term not in matched_terms:
+            continue
+
+        items.append({
+            "id": item.id,
+            "title": item.title,
+            "link": item.link,
+            "published": item.published.isoformat() if item.published else None,
+            "severity": item.severity,
+            "feed_name": feed_names.get(item.feed_id, "Unknown"),
+            "matched_terms": matched_terms[:5],
+        })
+
+    return jsonify({"items": items[:200], "term_counts": term_counts}), 200
+
+
+@radar_bp.route("/web/watchlist/add", methods=["POST"])
+@web_login_required
+def web_watchlist_add():
+    user_id = session["site_user_id"]
+    data = request.get_json(silent=True) or {}
+    term = data.get("term", "").strip()[:200]
+    if not term:
+        return jsonify({"error": "Term cannot be empty"}), 400
+    existing = Watchlist.query.filter_by(user_id=user_id, term=term).first()
+    if existing:
+        return jsonify({"error": "Already in watchlist"}), 409
+    w = Watchlist(user_id=user_id, term=term)
+    db.session.add(w)
     db.session.commit()
-    return jsonify({"id": item_id, "is_read": item.is_read}), 200
+    return jsonify({"id": w.id, "term": w.term}), 201
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# F1: Full article content
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-@radar_bp.route("/web/item/<int:item_id>/full", methods=["GET"])
+@radar_bp.route("/web/watchlist/delete/<int:wl_id>", methods=["POST"])
 @web_login_required
-def web_item_full(item_id):
-    item = FeedItem.query.get(item_id)
-    if not item:
+def web_watchlist_delete(wl_id):
+    user_id = session["site_user_id"]
+    w = Watchlist.query.filter_by(id=wl_id, user_id=user_id).first()
+    if not w:
         return jsonify({"error": "Not found"}), 404
-    feed_names = {f.id: f.name for f in RSSFeed.query.all()}
-    return jsonify({
-        "id": item.id,
-        "title": item.title,
-        "content_html": item.content_html or item.summary or "",
-        "link": item.link,
-        "published": item.published.isoformat() if item.published else None,
-        "feed_name": feed_names.get(item.feed_id, "Unknown"),
-        "severity": item.severity,
-        "tags": item.tags,
-        "iocs": item.iocs,
-    }), 200
+    db.session.delete(w)
+    db.session.commit()
+    return jsonify({"ok": True}), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────

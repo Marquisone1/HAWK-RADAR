@@ -129,3 +129,23 @@ class FeedItem(db.Model):
 
     def __repr__(self):
         return f"<FeedItem {self.id}: {self.title[:40]}>"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Watchlist — per-user monitored terms
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Watchlist(db.Model):
+    __tablename__ = "watchlist"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("site_users.id"), nullable=False, index=True)
+    term = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "term", name="uq_user_watchlist_term"),
+    )
+
+    def __repr__(self):
+        return f"<Watchlist user={self.user_id} term={self.term}>"

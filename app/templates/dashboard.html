@@ -233,7 +233,6 @@
           <div class="stat-card"><div class="stat-value">${esc(analytics.total)}</div><div class="stat-label">Total Items</div></div>
           <div class="stat-card"><div class="stat-value">${esc(analytics.last_24h)}</div><div class="stat-label">Last 24 Hours</div></div>
           <div class="stat-card"><div class="stat-value" style="color:var(--danger)">${esc(analytics.critical_count)}</div><div class="stat-label">Critical</div></div>
-          <div class="stat-card"><div class="stat-value">${esc(analytics.unread_count)}</div><div class="stat-label">Unread</div></div>
           <div class="stat-card"><div class="stat-value">${(analytics.feed_stats || []).length}</div><div class="stat-label">Active Feeds</div></div>
         </div>
       `;
@@ -341,6 +340,26 @@
       }
       html += '</div>';
       html += '</div>'; // close tables-row
+
+      // CVE frequency chart (only shown when >= 5 unique CVEs exist)
+      if (analytics.cve_graph && analytics.cve_graph.length >= 5) {
+        const topCVEs = analytics.cve_graph.slice(0, 20);
+        const maxCVECount = Math.max(...topCVEs.map(c => c.count), 1);
+        html += '<div class="table-panel" style="margin-bottom:28px;">';
+        html += '<div class="chart-title">CVE Frequency — Most Referenced CVEs (Last 30 Days)</div>';
+        html += '<div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">';
+        for (const entry of topCVEs) {
+          const pct = Math.max(Math.round((entry.count / maxCVECount) * 100), 2);
+          html += `<div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-family:monospace;font-size:0.78rem;color:#ff6b6b;min-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(entry.cve)}">${esc(entry.cve)}</span>
+            <div style="flex:1;height:14px;background:var(--line);border-radius:4px;overflow:hidden;">
+              <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,#c0392b,#ff6b6b);border-radius:4px;transition:width 0.4s ease;"></div>
+            </div>
+            <span style="font-size:0.76rem;color:var(--muted);min-width:28px;text-align:right;">${esc(entry.count)}</span>
+          </div>`;
+        }
+        html += '</div></div>';
+      }
 
       // Feed health
       const feeds = feedData.feeds || [];

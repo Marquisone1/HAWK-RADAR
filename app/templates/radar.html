@@ -182,8 +182,6 @@
       box-shadow: 0 4px 24px rgba(76,201,240,0.10), 0 0 0 1px rgba(76,201,240,0.15);
       transform: translateY(-2px);
     }
-    .feed-card.read { opacity: 0.55; }
-
     .feed-card-header {
       display: flex; align-items: flex-start; gap: 12px; justify-content: space-between;
     }
@@ -428,6 +426,46 @@
       cursor: pointer; transition: border-color .15s, background .15s;
     }
     .detail-btn:hover { border-color: var(--accent); background: rgba(76,201,240,0.06); }
+
+    /* ── Watchlist highlight ────────────────────────────── */
+    .watchlist-match { box-shadow: 0 0 0 2px rgba(255,183,3,0.5) !important; border-color: rgba(255,183,3,0.6) !important; }
+    .watch-badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 8px; border-radius: 999px; font-size: 0.68rem; font-weight: 700;
+      background: rgba(255,183,3,0.15); color: var(--warn); border: 1px solid rgba(255,183,3,0.4);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+
+    /* ── Watchlist modal ────────────────────────────────── */
+    .wl-term-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px;
+      font-size: 0.85rem;
+    }
+    .wl-term-row button {
+      background: none; border: 1px solid var(--line); border-radius: 6px;
+      color: var(--danger); padding: 2px 8px; font-size: 0.76rem; cursor: pointer;
+    }
+    .wl-term-row button:hover { border-color: var(--danger); }
+
+    /* ── Duplicate cluster ──────────────────────────────── */
+    .dup-cluster-bar {
+      margin-top: 10px; padding: 6px 10px;
+      border: 1px dashed rgba(76,201,240,0.35); border-radius: 8px;
+      font-size: 0.78rem; color: var(--muted); cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .dup-cluster-bar:hover { border-color: var(--accent); color: var(--accent); }
+    .dup-cluster-list { margin-top: 8px; display: none; flex-direction: column; gap: 6px; }
+    .dup-cluster-list.open { display: flex; }
+    .dup-item {
+      padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px;
+      font-size: 0.80rem; background: rgba(13,20,34,0.5);
+      display: flex; flex-direction: column; gap: 4px;
+    }
+    body.light .dup-item { background: rgba(237,243,252,0.8); }
+    .dup-item a { color: var(--accent); text-decoration: none; font-size: 0.80rem; }
+    .dup-item a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -440,6 +478,7 @@
       <div class="nav-links">
         <span class="nav-user">👤 {{ session.get('site_username', 'User') }}</span>
         <button id="themeBtn" class="nav-btn" style="padding:8px 14px;font-size:1.1rem;line-height:1;">🌙</button>
+        <a href="/watchlist" class="nav-btn">👁 Watchlist</a>
         <a href="/dashboard" class="nav-btn">📊 Analytics</a>
         {% if session.get('site_role') == 'admin' %}
         <a href="/admin" class="nav-btn">👥 Admin</a>
@@ -455,7 +494,6 @@
       <div class="stat-mini"><div class="stat-val" id="statTotal">—</div><div class="stat-lbl">Total Items</div></div>
       <div class="stat-mini"><div class="stat-val" id="statCritical" style="color:var(--danger)">—</div><div class="stat-lbl">Critical</div></div>
       <div class="stat-mini"><div class="stat-val" id="statHigh" style="color:var(--warn)">—</div><div class="stat-lbl">High</div></div>
-      <div class="stat-mini"><div class="stat-val" id="statUnread">—</div><div class="stat-lbl">Unread</div></div>
       <div class="stat-mini"><div class="stat-val" id="stat24h">—</div><div class="stat-lbl" id="stat24hLabel">Last 24h</div></div>
     </div>
 
@@ -499,9 +537,12 @@
       </select>
       <input type="text" id="filterSearch" placeholder="Search threats…" />
       <button class="filter-btn" id="filterStarred">⭐ Starred</button>
-      <button class="filter-btn" id="filterUnread">📩 Unread</button>
+      <button class="filter-btn" id="filterWatchlist">👁 Watchlist</button>
+      <select id="filterWatchlistTerm">
+        <option value="">All Watchlist Terms</option>
+      </select>
       <button class="filter-btn" id="filterHasCVE">🛡️ Has CVEs</button>
-      <button class="filter-btn" id="filterHasIOC">🔍 Has IOCs</button>
+      <button class="filter-btn" id="filterHasIOC">🔍 Extracted Tags or IOCs</button>
       <button class="filter-btn" id="filterGermany">🇩🇪 Germany</button>
       <button class="filter-btn" id="btnCompact">☰ Compact</button>
       <button class="filter-btn" id="btnClearFilters" style="color:var(--muted);border-color:var(--muted);">✕ Clear</button>
@@ -513,16 +554,6 @@
 
     <!-- U2: New items badge -->
     <div id="newBadge" class="new-badge" onclick="dismissNewBadge()">🔔 <span id="newBadgeCount">0</span> new items — click to refresh</div>
-
-    <!-- F1: Full content modal -->
-    <div id="fullModal" class="modal-overlay" onclick="if(event.target===this)closeFullModal();">
-      <div class="modal-panel">
-        <button class="modal-close" onclick="closeFullModal()">✕</button>
-        <div class="modal-title" id="modalTitle"></div>
-        <div class="modal-meta" id="modalMeta"></div>
-        <div class="modal-body" id="modalBody"></div>
-      </div>
-    </div>
 
     <!-- Loader -->
     <div id="loader" class="loader">
@@ -552,7 +583,8 @@
     let currentOffset = 0;
     let totalItems = 0;
     let starredFilter = false;
-    let unreadFilter = false;
+    let watchlistFilter = false;
+    let selectedWatchlistTerm = '';
     let germanyFilter = false;
     let hasCVEFilter = false;
     let hasIOCFilter = false;
@@ -560,6 +592,7 @@
     let lastLoadTimestamp = new Date().toISOString();
     let newItemPollTimer = null;
     let filterSearchTimer = null;
+    let watchlistTerms = []; // [{id, term}]
 
     function esc(v) {
       if (v === null || v === undefined) return "";
@@ -606,15 +639,28 @@
       return d.toLocaleDateString();
     }
 
+    function formatDateTime(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      const date = d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+      const time = d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      return `${date} · ${time}`;
+    }
+
     function renderFeedCard(item) {
-      const readClass = item.is_read ? ' read' : '';
       const starClass = item.is_starred ? ' starred' : '';
       const starIcon = item.is_starred ? '★' : '☆';
       const search = getActiveSearch();
 
+      // Watchlist match check
+      const haystack = [item.title, item.summary, ...(item.tags || []), ...(item.iocs?.cves || [])].join(' ').toLowerCase();
+      const matchedTerms = watchlistTerms.filter(w => haystack.includes(w.term.toLowerCase()));
+      const isWatched = matchedTerms.length > 0;
+
       const tagChips = (item.tags || []).map(t => `<span class="chip tag">${esc(t)}</span>`).join('');
       const cveBadge = item.cve_count > 0 ? `<span class="chip cve">🛡️ ${item.cve_count} CVE${item.cve_count > 1 ? 's' : ''}</span>` : '';
       const iocBadge = item.ioc_count > 0 ? `<span class="chip ioc">🔍 ${item.ioc_count} IOC${item.ioc_count > 1 ? 's' : ''}</span>` : '';
+      const watchBadge = isWatched ? `<span class="watch-badge">👁 WATCH</span>` : '';
 
       // F2: Hover preview (first 280 chars of summary)
       const previewText = (item.summary || '').substring(0, 280);
@@ -648,19 +694,48 @@
         <span>${timeAgo(item.published)}</span>
       </div>`;
 
+      // Duplicate cluster section
+      const duplicates = item._duplicates || [];
+      let dupHtml = '';
+      if (duplicates.length > 0) {
+        const dupId = `dup-${item.id}`;
+        dupHtml = `
+          <div class="dup-cluster-bar" onclick="toggleDupCluster('${dupId}', this); event.stopPropagation();">
+            🔁 <span>${duplicates.length} duplicate source${duplicates.length > 1 ? 's' : ''} reporting same CVEs</span>
+            <span style="margin-left:auto;font-size:0.72rem;">▼ expand</span>
+          </div>
+          <div class="dup-cluster-list" id="${dupId}">
+            ${duplicates.map(d => `
+              <div class="dup-item">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  ${severityBadge(d.severity)}
+                  <a href="${safeHref(d.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation();">${esc(d.title)}</a>
+                </div>
+                <div style="display:flex;gap:6px;font-size:0.72rem;color:var(--muted);">
+                  <span>${esc(d.feed_name)}</span>
+                  <span>·</span>
+                  <span>${timeAgo(d.published)}</span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      }
+
       return `
-        <div class="feed-card${readClass}" data-id="${item.id}" onclick="toggleDetail(this, event)">
+        <div class="feed-card${isWatched ? ' watchlist-match' : ''}" data-id="${item.id}" onclick="toggleDetail(this, event)">
           <div class="feed-card-header">
             <div style="flex:1;">
               <div class="feed-card-title">
                 ${severityBadge(item.severity)}
+                ${watchBadge}
                 <a href="${safeHref(item.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation();">${titleHtml}</a>
                 ${hoverPreview}
                 ${compactMeta}
               </div>
               <div class="feed-card-meta">
                 <span class="chip source">${esc(item.feed_name)}</span>
-                <span class="chip">${timeAgo(item.published)}</span>
+                <span class="chip" title="${esc(timeAgo(item.published))}" style="cursor:default;">📅 ${esc(formatDateTime(item.published))}</span>
                 ${tagChips}
                 ${cveBadge}
                 ${iocBadge}
@@ -670,17 +745,14 @@
               <button class="action-btn${starClass}" onclick="toggleStar(${item.id}, this, event)" title="Star">
                 ${starIcon}
               </button>
-              <button class="action-btn" onclick="toggleRead(${item.id}, this, event)" title="Mark read/unread">
-                ${item.is_read ? '📖' : '📩'}
-              </button>
             </div>
           </div>
           <div class="feed-card-detail" id="detail-${item.id}">
             <div class="detail-summary">${summaryHtml}</div>
             ${iocDetail}
+            ${dupHtml}
             <div class="detail-actions">
               ${item.link ? `<a href="${safeHref(item.link)}" target="_blank" rel="noopener" class="detail-btn" onclick="event.stopPropagation();">🔗 Open Article</a>` : ''}
-              <button class="detail-btn" onclick="openFullContent(${item.id}, event)">📄 Read Full</button>
               <button class="detail-btn" onclick="loadRelated(${item.id}, this, event)">🔗 Related</button>
             </div>
             <div class="related-section" id="related-${item.id}" style="display:none;"></div>
@@ -689,81 +761,25 @@
       `;
     }
 
+    function populateWatchlistTermOptions() {
+      const select = document.getElementById('filterWatchlistTerm');
+      const currentValue = selectedWatchlistTerm;
+      select.innerHTML = '<option value="">All Watchlist Terms</option>';
+      watchlistTerms.forEach(term => {
+        const option = document.createElement('option');
+        option.value = term.term;
+        option.textContent = term.term;
+        if (term.term === currentValue) option.selected = true;
+        select.appendChild(option);
+      });
+    }
+
     function toggleDetail(card, event) {
       if (event.target.closest('.action-btn') || event.target.closest('a') || event.target.closest('.detail-btn')) return;
       if (compactMode) return;
       const detail = card.querySelector('.feed-card-detail');
       detail.classList.toggle('open');
     }
-
-    // F1: Full content modal
-    async function openFullContent(id, event) {
-      event.stopPropagation();
-      try {
-        const resp = await fetch(`/web/item/${id}/full`, { headers: { 'X-CSRFToken': CSRF } });
-        const data = await resp.json();
-        if (!resp.ok) return;
-        document.getElementById('modalTitle').innerHTML = esc(data.title);
-        document.getElementById('modalMeta').innerHTML = `
-          ${severityBadge(data.severity)}
-          <span class="chip source">${esc(data.feed_name)}</span>
-          <span class="chip">${timeAgo(data.published)}</span>
-          ${(data.tags || []).map(t => `<span class="chip tag">${esc(t)}</span>`).join('')}
-        `;
-        const body = document.getElementById('modalBody');
-        let bodyHtml = '';
-
-        // Show HTML content if available
-        const content = data.content_html || '';
-        if (content && content.includes('<')) {
-          // Render as HTML
-          bodyHtml = content;
-        } else if (content) {
-          // Plain text — wrap in paragraphs
-          bodyHtml = '<p>' + esc(content).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
-        } else {
-          bodyHtml = '<p style="color:var(--muted)">No extended content available for this item.</p>';
-        }
-
-        // Add IOCs section if present
-        const iocs = data.iocs || {};
-        const iocSections = [];
-        if (iocs.cves && iocs.cves.length) iocSections.push({label: 'CVEs', items: iocs.cves});
-        if (iocs.ips && iocs.ips.length) iocSections.push({label: 'IPs', items: iocs.ips});
-        if (iocs.domains && iocs.domains.length) iocSections.push({label: 'Domains', items: iocs.domains});
-        if (iocs.hashes && iocs.hashes.length) iocSections.push({label: 'Hashes', items: iocs.hashes});
-        if (iocSections.length) {
-          bodyHtml += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">';
-          bodyHtml += '<h4 style="font-size:0.74rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin:0 0 10px;">Indicators of Compromise</h4>';
-          for (const s of iocSections) {
-            bodyHtml += `<div style="margin-bottom:10px;"><strong style="font-size:0.78rem;color:var(--muted);">${esc(s.label)}</strong><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">`;
-            for (const val of s.items) {
-              bodyHtml += `<span class="ioc-item">${esc(val)}</span>`;
-            }
-            bodyHtml += '</div></div>';
-          }
-          bodyHtml += '</div>';
-        }
-
-        body.innerHTML = bodyHtml;
-        // Sanitize: remove scripts, event handlers
-        body.querySelectorAll('script').forEach(s => s.remove());
-        body.querySelectorAll('*').forEach(el => {
-          for (const attr of [...el.attributes]) {
-            if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
-          }
-        });
-        if (data.link) {
-          body.innerHTML += `<p style="margin-top:16px;"><a href="${safeHref(data.link)}" target="_blank" rel="noopener" class="detail-btn" style="display:inline-block;">🔗 Open Original Article →</a></p>`;
-        }
-        document.getElementById('fullModal').classList.add('open');
-      } catch(e) { console.error('Read Full error:', e); }
-    }
-
-    function closeFullModal() {
-      document.getElementById('fullModal').classList.remove('open');
-    }
-    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFullModal(); });
 
     // F6: Related items
     async function loadRelated(id, btn, event) {
@@ -844,20 +860,12 @@
       } catch(e) {}
     }
 
-    async function toggleRead(id, btn, event) {
-      event.stopPropagation();
-      try {
-        const resp = await fetch(`/web/item/${id}/read`, {
-          method: 'POST', headers: { 'X-CSRFToken': CSRF }
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-          btn.textContent = data.is_read ? '📖' : '📩';
-          const card = btn.closest('.feed-card');
-          card.classList.toggle('read', data.is_read);
-          if (unreadFilter && data.is_read) applyFilters(currentOffset);
-        }
-      } catch(e) {}
+    function toggleDupCluster(id, bar) {
+      const list = document.getElementById(id);
+      if (!list) return;
+      list.classList.toggle('open');
+      const arrow = bar.querySelector('span:last-child');
+      if (arrow) arrow.textContent = list.classList.contains('open') ? '▲ collapse' : '▼ expand';
     }
 
     function getFilterParams(includeFeed = true) {
@@ -876,7 +884,8 @@
       if (timeRange) params.set('time_range', timeRange);
       if (search) params.set('search', search);
       if (starredFilter) params.set('starred', 'true');
-      if (unreadFilter) params.set('unread', 'true');
+      if (watchlistFilter) params.set('watchlist', 'true');
+      if (selectedWatchlistTerm) params.set('watchlist_term', selectedWatchlistTerm);
       if (germanyFilter) params.set('country', 'de');
       if (hasCVEFilter) params.set('has_cves', 'true');
       if (hasIOCFilter) params.set('has_iocs', 'true');
@@ -891,7 +900,7 @@
         || document.getElementById('filterSector').value
         || document.getElementById('filterTimeRange').value
         || document.getElementById('filterSearch').value.trim()
-        || starredFilter || unreadFilter || germanyFilter || hasCVEFilter || hasIOCFilter;
+        || starredFilter || watchlistFilter || selectedWatchlistTerm || germanyFilter || hasCVEFilter || hasIOCFilter;
     }
 
     async function loadItems(offset) {
@@ -917,7 +926,9 @@
           return;
         }
 
-        list.innerHTML = data.items.map((item, i) => {
+        const visibleItems = clusterItems(data.items);
+
+        list.innerHTML = visibleItems.map((item, i) => {
           const html = renderFeedCard(item);
           return html.replace('class="feed-card', `style="--i:${i}" class="feed-card`);
         }).join('');
@@ -943,7 +954,6 @@
       document.getElementById('statTotal').textContent = total;
       document.getElementById('statCritical').textContent = stats.critical || 0;
       document.getElementById('statHigh').textContent = stats.high || 0;
-      document.getElementById('statUnread').textContent = stats.unread || 0;
       document.getElementById('stat24h').textContent = stats.time_window_count || 0;
       document.getElementById('stat24hLabel').textContent = stats.time_window_label || 'Last 24h';
       document.getElementById('statTotal').closest('.stat-mini').querySelector('.stat-lbl').textContent = hasActiveFilters() ? 'Filtered' : 'Total Items';
@@ -956,7 +966,6 @@
         document.getElementById('statTotal').textContent = data.total;
         document.getElementById('statCritical').textContent = data.severity_counts?.critical || 0;
         document.getElementById('statHigh').textContent = data.severity_counts?.high || 0;
-        document.getElementById('statUnread').textContent = data.unread_count;
         document.getElementById('stat24h').textContent = data.last_24h;
         document.getElementById('stat24hLabel').textContent = 'Last 24h';
         document.getElementById('statTotal').closest('.stat-mini').querySelector('.stat-lbl').textContent = 'Total Items';
@@ -998,13 +1007,15 @@
       document.getElementById('filterSector').value = '';
       document.getElementById('filterTimeRange').value = '';
       document.getElementById('filterSearch').value = '';
+      document.getElementById('filterWatchlistTerm').value = '';
       starredFilter = false;
-      unreadFilter = false;
+      watchlistFilter = false;
+      selectedWatchlistTerm = '';
       germanyFilter = false;
       hasCVEFilter = false;
       hasIOCFilter = false;
       resetToggleButton('filterStarred', false);
-      resetToggleButton('filterUnread', false);
+      resetToggleButton('filterWatchlist', false);
       resetToggleButton('filterGermany', false);
       resetToggleButton('filterHasCVE', false);
       resetToggleButton('filterHasIOC', false);
@@ -1036,14 +1047,22 @@
     ['filterSeverity', 'filterFeed', 'filterCategory', 'filterSector', 'filterTimeRange'].forEach(id => {
       document.getElementById(id).addEventListener('change', () => applyFilters(0));
     });
+    document.getElementById('filterWatchlistTerm').addEventListener('change', event => {
+      selectedWatchlistTerm = event.target.value;
+      if (selectedWatchlistTerm) {
+        watchlistFilter = true;
+        resetToggleButton('filterWatchlist', true);
+      }
+      applyFilters(0);
+    });
 
     bindToggleFilter('filterStarred', {
       get: () => starredFilter,
       set: value => { starredFilter = value; }
     });
-    bindToggleFilter('filterUnread', {
-      get: () => unreadFilter,
-      set: value => { unreadFilter = value; }
+    bindToggleFilter('filterWatchlist', {
+      get: () => watchlistFilter,
+      set: value => { watchlistFilter = value; }
     });
     bindToggleFilter('filterGermany', {
       get: () => germanyFilter,
@@ -1118,9 +1137,41 @@
     // ── U2: Poll for new items every 60s ──
     newItemPollTimer = setInterval(pollNewItems, 60000);
 
+    // ── CVE-aware duplicate clustering ──
+    function clusterItems(items) {
+      const seenKeys = new Map(); // cve-key → index in result
+      const result = [];
+      for (const item of items) {
+        const cves = (item.iocs?.cves || []);
+        if (cves.length === 0) {
+          result.push({ ...item, _duplicates: [] });
+          continue;
+        }
+        const key = [...cves].sort().join('|');
+        if (seenKeys.has(key)) {
+          result[seenKeys.get(key)]._duplicates.push(item);
+        } else {
+          const idx = result.length;
+          result.push({ ...item, _duplicates: [] });
+          seenKeys.set(key, idx);
+        }
+      }
+      return result;
+    }
+
+    // ── Watchlist ──────────────────────────────────────── //
+    async function loadWatchlist() {
+      try {
+        const resp = await fetch('/web/watchlist', { headers: { 'X-CSRFToken': CSRF } });
+        const data = await resp.json();
+        watchlistTerms = data.terms || [];
+        populateWatchlistTermOptions();
+      } catch(e) { watchlistTerms = []; }
+    }
+
     // ── Initial load ──
     loadStats();
-    applyFilters(0);
+    loadWatchlist().then(() => applyFilters(0));
   </script>
 </body>
 </html>
