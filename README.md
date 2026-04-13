@@ -5,7 +5,6 @@
 ![Status](https://img.shields.io/badge/status-experimental-orange)
 ![Stack](https://img.shields.io/badge/stack-Flask%20%7C%20SQLite%20%7C%20Docker-blue)
 ![Purpose](https://img.shields.io/badge/purpose-learning%20%2F%20demo-yellow)
-![Enterprise Ready](https://img.shields.io/badge/enterprise-ready-red)
 
 A lightweight RSS-based threat intelligence dashboard built with Flask, SQLite, and Docker.
 
