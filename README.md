@@ -14,13 +14,6 @@ This project is vibe coded and intended for experimentation, learning, and inter
 It is not designed, reviewed, or hardened for enterprise production environments.
 Do not treat this repository as production-ready security tooling.
 
-## Important Disclaimer
-
-This project is vibe coded and intended for experimentation, learning, and internal demo use.
-
-It is not designed, reviewed, or hardened for enterprise production environments.
-Use at your own risk.
-
 ## What It Does
 
 - Aggregates cybersecurity RSS feeds
