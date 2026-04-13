@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="csrf-token" content="{{ csrf_token() }}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <title>HAWK RADAR</title>
+  <style>
+    :root {
+      --bg: #0a0f1a;
+      --panel: #121a2a;
+      --line: #243149;
+      --text: #e6eefc;
+      --muted: #9aa8c3;
+      --accent: #4cc9f0;
+      --ok: #80ed99;
+      --warn: #ffb703;
+      --danger: #ff4d6d;
+    }
+
+    /* ── Light mode ─────────────────────────────────────────────── */
+    body.light {
+      background: radial-gradient(circle at top right, #d6e8f8 0%, #eef4fd 45%);
+      --bg: #eef4fd;
+      --panel: #fff;
+      --line: #c5d4e8;
+      --text: #0f172a;
+      --muted: #334155;
+      --accent: #005f8f;
+      --ok: #166534;
+      --warn: #92400e;
+      --danger: #b42318;
+    }
+    body.light .app           { background: #fff; border-color: #c5d4e8; }
+    body.light input           { background: #e8f0fb; color: var(--text); }
+    body.light button          { background: #dce8f8; color: var(--text); }
+    body.light button.primary  { background: var(--accent); color: #fff; }
+    body.light .panel          { background: #f5f8fe; }
+    body.light .feed-card      { background: #edf3fc; }
+    body.light .chip           { background: rgba(15,23,42,0.05); color: #334155; }
+    body.light .severity-badge { opacity: 0.9; }
+    body.light .nav-brand h1   { color: #005f8f; }
+    body.light .detail-summary,
+    body.light .modal-body,
+    body.light .feed-card-title a,
+    body.light .status-msg,
+    body.light .stat-mini .stat-lbl { color: var(--text); }
+
+    * { box-sizing: border-box; margin: 0; }
+    html { scroll-behavior: smooth; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* Animations */
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+
+    body {
+      margin: 0;
+      font-family: 'Roboto', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      background: radial-gradient(circle at top right, #18263d 0%, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 16px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 1800px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 32px 40px 40px;
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      animation: fadeIn 0.45s ease-out;
+    }
+
+    /* ── Nav ─────────────────────────────────────────────── */
+    .top-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .nav-brand h1 { margin: 0; font-size: 2rem; letter-spacing: 0.08em; color: var(--accent); }
+    .nav-brand .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 0.95rem; }
+
+    .nav-links { display: flex; align-items: center; gap: 12px; }
+
+    /* Hamburger */
+    .hamburger {
+      display: none; background: none; border: 1px solid var(--line); border-radius: 8px;
+      color: var(--text); font-size: 1.4rem; padding: 6px 10px; cursor: pointer;
+      transition: border-color .15s;
+    }
+    .hamburger:hover { border-color: var(--accent); }
+
+    .nav-user {
+      color: var(--muted); font-size: 0.88rem; padding: 7px 14px;
+      border: 1px solid var(--line); border-radius: 999px;
+    }
+
+    .nav-btn {
+      text-decoration: none; color: var(--text);
+      border: 1px solid var(--line); border-radius: 10px;
+      padding: 8px 18px; font-size: 0.9rem; font-weight: 600;
+      transition: border-color 0.15s, color 0.15s;
+      cursor: pointer; background: none;
+    }
+    .nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .nav-btn.logout { color: #ff9b9b; border-color: #3a1a1a; }
+    .nav-btn.logout:hover { border-color: #ff9b9b; }
+
+    /* ── Filter bar ─────────────────────────────────────────────── */
+    .filter-bar {
+      display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; align-items: center;
+    }
+    .filter-bar select, .filter-bar input {
+      border: 1px solid var(--line); border-radius: 10px;
+      background: #0d1422; color: var(--text); padding: 10px 14px;
+      font-size: 0.88rem; outline: none; transition: border-color 0.15s;
+    }
+    body.light .filter-bar select, body.light .filter-bar input { background: #e8f0fb; color: var(--text); }
+    .filter-bar select:focus, .filter-bar input:focus { border-color: var(--accent); }
+    .filter-bar input[type="text"] { flex: 1; min-width: 200px; }
+    .filter-bar select { cursor: pointer; min-width: 140px; }
+
+    .filter-btn {
+      border: 1px solid var(--line); border-radius: 10px;
+      background: #0f1e34; color: var(--text); padding: 10px 16px;
+      font-size: 0.88rem; font-weight: 600; cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    body.light .filter-btn { background: #dce8f8; }
+    .filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .filter-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(76,201,240,0.08); }
+    .filter-btn.refresh { color: var(--ok); border-color: #0d4020; }
+    .filter-btn.refresh:hover { border-color: var(--ok); }
+
+    /* ── Stats row ─────────────────────────────────────────────── */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px; margin-bottom: 20px;
+    }
+    .stat-mini {
+      background: #0d1422; border: 1px solid var(--line); border-radius: 10px;
+      padding: 12px 16px; text-align: center;
+    }
+    body.light .stat-mini { background: #edf3fc; }
+    .stat-mini .stat-val { font-size: 1.6rem; font-weight: 700; color: var(--accent); }
+    .stat-mini .stat-lbl { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-top: 2px; }
+
+    /* ── Feed items ─────────────────────────────────────────────── */
+    .feed-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .feed-card {
+      border: 1px solid var(--line); border-radius: 12px;
+      background: #0b111c; padding: 18px 22px;
+      cursor: pointer;
+      transition: border-color .2s, box-shadow .2s, transform .2s;
+      animation: fadeIn .35s ease-out both;
+    }
+    .feed-card:nth-child(n) { animation-delay: calc(var(--i,0) * 30ms); }
+    body.light .feed-card { background: #edf3fc; }
+    .feed-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 4px 24px rgba(76,201,240,0.10), 0 0 0 1px rgba(76,201,240,0.15);
+      transform: translateY(-2px);
+    }
+    .feed-card.read { opacity: 0.55; }
+
+    .feed-card-header {
+      display: flex; align-items: flex-start; gap: 12px; justify-content: space-between;
+    }
+    .feed-card-title { font-size: 1rem; font-weight: 600; line-height: 1.4; flex: 1; }
+    .feed-card-title a { color: var(--text); text-decoration: none; }
+    .feed-card-title a:hover { color: var(--accent); }
+
+    .feed-card-meta {
+      display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center;
+    }
+
+    /* Severity badges */
+    .severity-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .severity-critical { background: rgba(255,77,109,0.15); color: var(--danger); border: 1px solid rgba(255,77,109,0.3); }
+    .severity-high     { background: rgba(255,183,3,0.12); color: var(--warn); border: 1px solid rgba(255,183,3,0.3); }
+    .severity-medium   { background: rgba(76,201,240,0.12); color: var(--accent); border: 1px solid rgba(76,201,240,0.3); }
+    .severity-low      { background: rgba(128,237,153,0.1); color: var(--ok); border: 1px solid rgba(128,237,153,0.2); }
+    .severity-unknown  { background: rgba(154,168,195,0.1); color: var(--muted); border: 1px solid rgba(154,168,195,0.2); }
+
+    .chip {
+      border: 1px solid var(--line); border-radius: 999px;
+      padding: 2px 8px; font-size: 0.7rem; color: var(--muted);
+    }
+    .chip.tag { color: #74c0fc; border-color: #1a3a5a; }
+    .chip.source { color: var(--ok); border-color: #0d4020; }
+    .chip.ioc { color: var(--warn); border-color: #5a3e00; }
+    .chip.cve { color: #ff6b6b; border-color: #5a1a1a; }
+
+    .feed-card-actions {
+      display: flex; gap: 6px; flex-shrink: 0; align-items: flex-start;
+    }
+    .action-btn {
+      background: none; border: 1px solid var(--line); border-radius: 8px;
+      padding: 4px 8px; cursor: pointer; font-size: 0.85rem;
+      color: var(--muted); transition: color 0.15s, border-color 0.15s;
+    }
+    .action-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .action-btn.starred { color: var(--warn); border-color: var(--warn); }
+
+    /* ── Expanded detail ─────────────────────────────────────────────── */
+    .feed-card-detail {
+      display: none; margin-top: 14px; padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+    .feed-card-detail.open { display: block; }
+
+    .detail-summary {
+      font-size: 0.88rem; line-height: 1.6; color: var(--text);
+      margin-bottom: 12px;
+    }
+
+    .ioc-section { margin-top: 10px; }
+    .ioc-section h4 {
+      font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--muted); margin: 0 0 8px;
+    }
+    .ioc-list {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .ioc-item {
+      font-family: "Courier New", monospace; font-size: 0.76rem;
+      background: #0d1422; border: 1px solid var(--line); border-radius: 6px;
+      padding: 3px 8px; color: var(--warn);
+    }
+    body.light .ioc-item { background: #e8f0fb; }
+
+    .detail-link {
+      display: inline-block; margin-top: 10px; font-size: 0.85rem;
+      color: var(--accent); text-decoration: none;
+    }
+    .detail-link:hover { text-decoration: underline; }
+
+    /* ── Loader ─────────────────────────────────────────────── */
+    .loader { margin-top: 10px; display: none; }
+    .loader-track {
+      position: relative; width: 100%; height: 16px;
+      border: 1px solid var(--line); border-radius: 999px;
+      background: #0b111c; overflow: hidden;
+    }
+    body.light .loader-track { background: #dce8f8; }
+    .loader-fill {
+      position: absolute; top: 0; left: 0; height: 100%; width: 35%;
+      border-radius: 999px; background: linear-gradient(90deg, #1aa7db, var(--accent));
+      animation: radar-progress 1.15s ease-in-out infinite;
+    }
+    .radar-runner {
+      position: absolute; top: -2px; left: -2%; font-size: 1.1rem;
+      filter: drop-shadow(0 0 6px rgba(76,201,240,0.8));
+      animation: radar-run 1.15s ease-in-out infinite;
+      z-index: 2; pointer-events: none;
+    }
+    .loader-caption { margin-top: 6px; color: var(--muted); font-size: 0.82rem; }
+    @keyframes radar-progress { 0% { transform: translateX(-110%); } 100% { transform: translateX(340%); } }
+    @keyframes radar-run { 0% { left: -2%; } 100% { left: 92%; } }
+
+    /* ── Pagination ─────────────────────────────────────────────── */
+    .pagination {
+      display: flex; justify-content: center; align-items: center; gap: 12px;
+      margin-top: 20px;
+    }
+    .pagination button {
+      border: 1px solid var(--line); border-radius: 8px; background: #0f1e34;
+      color: var(--text); padding: 8px 16px; font-size: 0.85rem; cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    body.light .pagination button { background: #dce8f8; }
+    .pagination button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pagination .page-info { color: var(--muted); font-size: 0.82rem; }
+
+    .status-msg { text-align: center; color: var(--muted); padding: 40px 0; font-size: 0.92rem; }
+
+    /* ── Responsive ─────────────────────────────────────────────── */
+    @media (max-width: 1100px) {
+      .app { padding: 24px 28px 32px; }
+      .nav-brand h1 { font-size: 1.6rem; }
+    }
+
+    @media (max-width: 860px) {
+      .hamburger { display: block; }
+      .nav-links {
+        display: none; position: absolute; top: 100%; right: 0;
+        flex-direction: column; align-items: stretch;
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 12px; padding: 12px; gap: 8px;
+        min-width: 200px; z-index: 100;
+        box-shadow: 0 12px 36px rgba(0,0,0,.35);
+      }
+      .nav-links.open { display: flex; animation: fadeIn .2s ease-out; }
+      .top-nav { position: relative; flex-wrap: wrap; }
+      .nav-btn { text-align: center; }
+      .nav-user { text-align: center; }
+      .filter-bar { flex-direction: column; gap: 8px; }
+      .filter-bar select, .filter-bar input[type="text"] { width: 100%; min-width: 0; }
+      .stats-row { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+    }
+
+    @media (max-width: 560px) {
+      body { padding: 8px; }
+      .app { border-radius: 12px; padding: 16px 14px 24px; }
+      .nav-brand h1 { font-size: 1.3rem; }
+      .nav-brand .subtitle { font-size: 0.78rem; }
+      .stats-row { grid-template-columns: 1fr 1fr; gap: 6px; }
+      .stat-mini { padding: 10px 8px; }
+      .stat-mini .stat-val { font-size: 1.3rem; }
+      .feed-card { padding: 14px 14px; }
+      .feed-card-header { flex-direction: column; gap: 8px; }
+      .feed-card-title { font-size: 0.92rem; }
+      .feed-card-meta { gap: 4px; }
+      .chip { font-size: 0.64rem; padding: 2px 6px; }
+      .pagination button { padding: 10px 14px; font-size: 0.82rem; }
+      .filter-btn { width: 100%; text-align: center; }
+    }
+
+    /* ── F2: Hover preview tooltip ─────────────────────────── */
+    .feed-card-title { position: relative; }
+    .hover-preview {
+      display: none; position: absolute; top: 100%; left: 0; z-index: 50;
+      width: 380px; max-width: 90vw; padding: 14px 16px; margin-top: 6px;
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      font-size: 0.82rem; line-height: 1.55; color: var(--muted);
+      box-shadow: 0 8px 32px rgba(0,0,0,.35); pointer-events: none;
+      animation: fadeIn .15s ease-out;
+    }
+    .feed-card-title:hover .hover-preview { display: block; }
+
+    /* ── F3: Search highlighting ─────────────────────────── */
+    mark { background: rgba(255,183,3,0.3); color: var(--text); border-radius: 2px; padding: 0 2px; }
+
+    /* ── F1: Full content modal ─────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+      animation: fadeIn .2s ease-out;
+    }
+    .modal-overlay.open { display: flex; align-items: center; justify-content: center; }
+    .modal-panel {
+      width: 95%; max-width: 860px; max-height: 85vh; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 16px; padding: 32px 36px;
+      overflow-y: auto; position: relative;
+      box-shadow: 0 16px 64px rgba(0,0,0,.4);
+    }
+    body.light .modal-panel { background: #fff; }
+    .modal-close {
+      position: absolute; top: 16px; right: 20px; background: none; border: 1px solid var(--line);
+      border-radius: 8px; color: var(--muted); font-size: 1.2rem; padding: 4px 10px;
+      cursor: pointer; transition: color .15s, border-color .15s;
+    }
+    .modal-close:hover { color: var(--danger); border-color: var(--danger); }
+    .modal-title { font-size: 1.3rem; font-weight: 700; margin: 0 0 8px; padding-right: 40px; }
+    .modal-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+    .modal-body { font-size: 0.92rem; line-height: 1.7; color: var(--text); }
+    .modal-body img { max-width: 100%; height: auto; border-radius: 8px; }
+    .modal-body a { color: var(--accent); }
+    .modal-body pre, .modal-body code { background: #0b111c; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; overflow-x: auto; }
+    body.light .modal-body pre, body.light .modal-body code { background: #e8f0fb; }
+
+    /* ── F6: Related items ─────────────────────────── */
+    .related-section { margin-top: 12px; }
+    .related-section h4 { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin: 0 0 8px; }
+    .related-item {
+      display: flex; align-items: center; gap: 8px; padding: 6px 0;
+      border-bottom: 1px solid var(--line); font-size: 0.82rem;
+    }
+    .related-item:last-child { border-bottom: none; }
+    .related-item a { color: var(--accent); text-decoration: none; }
+    .related-item a:hover { text-decoration: underline; }
+
+    /* ── U1: Compact mode ─────────────────────────── */
+    .feed-list.compact .feed-card { padding: 10px 16px; }
+    .feed-list.compact .feed-card-header { align-items: center; }
+    .feed-list.compact .feed-card-meta { display: none; }
+    .feed-list.compact .feed-card-title { font-size: 0.88rem; display: flex; align-items: center; gap: 8px; }
+    .feed-list.compact .feed-card-title .hover-preview { display: none !important; }
+    .feed-list.compact .feed-card-detail { display: none !important; }
+    .feed-list.compact .compact-meta {
+      display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--muted); margin-left: auto; white-space: nowrap;
+    }
+    .compact-meta { display: none; }
+
+    /* ── U2: New items badge ─────────────────────────── */
+    .new-badge {
+      display: none; position: fixed; top: 20px; right: 20px; z-index: 900;
+      background: linear-gradient(135deg, var(--accent), #3aa0d8); color: #05243a;
+      padding: 12px 22px; border-radius: 12px; font-weight: 700; font-size: 0.92rem;
+      cursor: pointer; box-shadow: 0 4px 24px rgba(76,201,240,.35);
+      animation: fadeIn .3s ease-out;
+      transition: transform .15s;
+    }
+    .new-badge:hover { transform: translateY(-2px); }
+    .new-badge.show { display: block; }
+
+    /* ── Detail action buttons ─────────────────────────── */
+    .detail-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .detail-btn {
+      border: 1px solid var(--line); border-radius: 8px; background: none;
+      color: var(--accent); padding: 6px 14px; font-size: 0.82rem; font-weight: 600;
+      cursor: pointer; transition: border-color .15s, background .15s;
+    }
+    .detail-btn:hover { border-color: var(--accent); background: rgba(76,201,240,0.06); }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <nav class="top-nav">
+      <div class="nav-brand">
+        <h1>🦅 HAWK RADAR 📡</h1>
+        <p class="subtitle">RSS Threat Intelligence Dashboard for Incident Response.</p>
+      </div>
+      <div class="nav-links">
+        <span class="nav-user">👤 {{ session.get('site_username', 'User') }}</span>
+        <button id="themeBtn" class="nav-btn" style="padding:8px 14px;font-size:1.1rem;line-height:1;">🌙</button>
+        <a href="/dashboard" class="nav-btn">📊 Analytics</a>
+        {% if session.get('site_role') == 'admin' %}
+        <a href="/admin" class="nav-btn">👥 Admin</a>
+        {% endif %}
+        <a href="/settings" class="nav-btn">⚙ Settings</a>
+        <a href="/logout" class="nav-btn logout">Logout</a>
+      </div>
+      <button class="hamburger" id="menuToggle" aria-label="Menu">☰</button>
+    </nav>
+
+    <!-- Stats row -->
+    <div class="stats-row">
+      <div class="stat-mini"><div class="stat-val" id="statTotal">—</div><div class="stat-lbl">Total Items</div></div>
+      <div class="stat-mini"><div class="stat-val" id="statCritical" style="color:var(--danger)">—</div><div class="stat-lbl">Critical</div></div>
+      <div class="stat-mini"><div class="stat-val" id="statHigh" style="color:var(--warn)">—</div><div class="stat-lbl">High</div></div>
+      <div class="stat-mini"><div class="stat-val" id="statUnread">—</div><div class="stat-lbl">Unread</div></div>
+      <div class="stat-mini"><div class="stat-val" id="stat24h">—</div><div class="stat-lbl" id="stat24hLabel">Last 24h</div></div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar">
+      <select id="filterSeverity">
+        <option value="all">All Severities</option>
+        <option value="critical">🔴 Critical</option>
+        <option value="high">🟠 High</option>
+        <option value="medium">🔵 Medium</option>
+        <option value="low">🟢 Low</option>
+        <option value="unknown">⚪ Unknown</option>
+      </select>
+      <select id="filterFeed">
+        <option value="">All Feeds</option>
+      </select>
+      <select id="filterCategory">
+        <option value="">All Categories</option>
+        <option value="CERT">🏛️ CERT</option>
+        <option value="News">📰 News</option>
+        <option value="CVE">🔓 CVE</option>
+        <option value="Exploit">💥 Exploit</option>
+      </select>
+      <select id="filterSector">
+        <option value="">All Sectors</option>
+        <option value="financial">🏦 Financial</option>
+        <option value="automotive">🚗 Automotive</option>
+        <option value="healthcare">🏥 Healthcare</option>
+        <option value="energy">⚡ Energy</option>
+        <option value="telecom">📡 Telecom</option>
+        <option value="retail">🛒 Retail</option>
+        <option value="government">🏢 Government</option>
+        <option value="manufacturing">🏭 Manufacturing</option>
+        <option value="technology">💻 Technology</option>
+      </select>
+      <select id="filterTimeRange">
+        <option value="">All Time</option>
+        <option value="24h">🕐 Last 24h</option>
+        <option value="7d">📅 Last 7 days</option>
+        <option value="30d">📆 Last 30 days</option>
+      </select>
+      <input type="text" id="filterSearch" placeholder="Search threats…" />
+      <button class="filter-btn" id="filterStarred">⭐ Starred</button>
+      <button class="filter-btn" id="filterUnread">📩 Unread</button>
+      <button class="filter-btn" id="filterHasCVE">🛡️ Has CVEs</button>
+      <button class="filter-btn" id="filterHasIOC">🔍 Has IOCs</button>
+      <button class="filter-btn" id="filterGermany">🇩🇪 Germany</button>
+      <button class="filter-btn" id="btnCompact">☰ Compact</button>
+      <button class="filter-btn" id="btnClearFilters" style="color:var(--muted);border-color:var(--muted);">✕ Clear</button>
+      <button class="filter-btn" id="btnApply" style="color:var(--accent);border-color:var(--accent);">Apply</button>
+      {% if session.get('site_role') == 'admin' %}
+      <button class="filter-btn refresh" id="btnRefresh">🔄 Refresh Feeds</button>
+      {% endif %}
+    </div>
+
+    <!-- U2: New items badge -->
+    <div id="newBadge" class="new-badge" onclick="dismissNewBadge()">🔔 <span id="newBadgeCount">0</span> new items — click to refresh</div>
+
+    <!-- F1: Full content modal -->
+    <div id="fullModal" class="modal-overlay" onclick="if(event.target===this)closeFullModal();">
+      <div class="modal-panel">
+        <button class="modal-close" onclick="closeFullModal()">✕</button>
+        <div class="modal-title" id="modalTitle"></div>
+        <div class="modal-meta" id="modalMeta"></div>
+        <div class="modal-body" id="modalBody"></div>
+      </div>
+    </div>
+
+    <!-- Loader -->
+    <div id="loader" class="loader">
+      <div class="loader-track">
+        <div class="loader-fill"></div>
+        <div class="radar-runner">🦅</div>
+      </div>
+      <div class="loader-caption" id="loaderText">Scanning threat feeds…</div>
+    </div>
+
+    <!-- Feed items list -->
+    <div id="feedList" class="feed-list">
+      <div class="status-msg">🦅 Loading threat intelligence…</div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination" style="display:none;">
+      <button id="btnPrev" disabled>← Prev</button>
+      <span class="page-info" id="pageInfo">—</span>
+      <button id="btnNext">Next →</button>
+    </div>
+  </main>
+
+  <script>
+    const CSRF = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const PAGE_SIZE = 50;
+    let currentOffset = 0;
+    let totalItems = 0;
+    let starredFilter = false;
+    let unreadFilter = false;
+    let germanyFilter = false;
+    let hasCVEFilter = false;
+    let hasIOCFilter = false;
+    let compactMode = localStorage.getItem('compactMode') === 'true';
+    let lastLoadTimestamp = new Date().toISOString();
+    let newItemPollTimer = null;
+    let filterSearchTimer = null;
+
+    function esc(v) {
+      if (v === null || v === undefined) return "";
+      return String(v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+
+    // F3: Highlight search terms in text
+    function highlightText(text, search) {
+      if (!search || !text) return esc(text);
+      const escaped = esc(text);
+      const searchEsc = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return escaped.replace(new RegExp(`(${searchEsc})`, 'gi'), '<mark>$1</mark>');
+    }
+
+    function getActiveSearch() {
+      return document.getElementById('filterSearch').value.trim();
+    }
+
+    function safeHref(url) {
+      if (!url) return '#';
+      const s = String(url).trim().toLowerCase();
+      if (s.startsWith('http://') || s.startsWith('https://')) return esc(url);
+      return '#';
+    }
+
+    function showLoader(text) {
+      document.getElementById('loaderText').textContent = text || 'Scanning threat feeds…';
+      document.getElementById('loader').style.display = 'block';
+    }
+    function hideLoader() { document.getElementById('loader').style.display = 'none'; }
+
+    function severityBadge(sev) {
+      return `<span class="severity-badge severity-${esc(sev)}">${esc(sev)}</span>`;
+    }
+
+    function timeAgo(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      const diff = (Date.now() - d.getTime()) / 1000;
+      if (diff < 60) return 'just now';
+      if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+      if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+      if (diff < 604800) return Math.floor(diff/86400) + 'd ago';
+      return d.toLocaleDateString();
+    }
+
+    function renderFeedCard(item) {
+      const readClass = item.is_read ? ' read' : '';
+      const starClass = item.is_starred ? ' starred' : '';
+      const starIcon = item.is_starred ? '★' : '☆';
+      const search = getActiveSearch();
+
+      const tagChips = (item.tags || []).map(t => `<span class="chip tag">${esc(t)}</span>`).join('');
+      const cveBadge = item.cve_count > 0 ? `<span class="chip cve">🛡️ ${item.cve_count} CVE${item.cve_count > 1 ? 's' : ''}</span>` : '';
+      const iocBadge = item.ioc_count > 0 ? `<span class="chip ioc">🔍 ${item.ioc_count} IOC${item.ioc_count > 1 ? 's' : ''}</span>` : '';
+
+      // F2: Hover preview (first 280 chars of summary)
+      const previewText = (item.summary || '').substring(0, 280);
+      const hoverPreview = previewText ? `<div class="hover-preview">${esc(previewText)}${previewText.length >= 280 ? '…' : ''}</div>` : '';
+
+      // F3: Highlight search terms in title/summary
+      const titleHtml = search ? highlightText(item.title, search) : esc(item.title);
+      const summaryHtml = search ? highlightText(item.summary, search) : esc(item.summary);
+
+      // Build IOC detail sections
+      let iocDetail = '';
+      const iocs = item.iocs || {};
+      const iocSections = [];
+      if (iocs.cves && iocs.cves.length) iocSections.push({label: 'CVEs', items: iocs.cves});
+      if (iocs.ips && iocs.ips.length) iocSections.push({label: 'IPs', items: iocs.ips});
+      if (iocs.domains && iocs.domains.length) iocSections.push({label: 'Domains', items: iocs.domains});
+      if (iocs.hashes && iocs.hashes.length) iocSections.push({label: 'Hashes', items: iocs.hashes});
+
+      if (iocSections.length) {
+        iocDetail = iocSections.map(s => `
+          <div class="ioc-section">
+            <h4>${esc(s.label)}</h4>
+            <div class="ioc-list">${s.items.map(i => `<span class="ioc-item">${esc(i)}</span>`).join('')}</div>
+          </div>
+        `).join('');
+      }
+
+      // U1: Compact mode meta (visible only in compact mode)
+      const compactMeta = `<div class="compact-meta">
+        <span class="chip source">${esc(item.feed_name)}</span>
+        <span>${timeAgo(item.published)}</span>
+      </div>`;
+
+      return `
+        <div class="feed-card${readClass}" data-id="${item.id}" onclick="toggleDetail(this, event)">
+          <div class="feed-card-header">
+            <div style="flex:1;">
+              <div class="feed-card-title">
+                ${severityBadge(item.severity)}
+                <a href="${safeHref(item.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation();">${titleHtml}</a>
+                ${hoverPreview}
+                ${compactMeta}
+              </div>
+              <div class="feed-card-meta">
+                <span class="chip source">${esc(item.feed_name)}</span>
+                <span class="chip">${timeAgo(item.published)}</span>
+                ${tagChips}
+                ${cveBadge}
+                ${iocBadge}
+              </div>
+            </div>
+            <div class="feed-card-actions">
+              <button class="action-btn${starClass}" onclick="toggleStar(${item.id}, this, event)" title="Star">
+                ${starIcon}
+              </button>
+              <button class="action-btn" onclick="toggleRead(${item.id}, this, event)" title="Mark read/unread">
+                ${item.is_read ? '📖' : '📩'}
+              </button>
+            </div>
+          </div>
+          <div class="feed-card-detail" id="detail-${item.id}">
+            <div class="detail-summary">${summaryHtml}</div>
+            ${iocDetail}
+            <div class="detail-actions">
+              ${item.link ? `<a href="${safeHref(item.link)}" target="_blank" rel="noopener" class="detail-btn" onclick="event.stopPropagation();">🔗 Open Article</a>` : ''}
+              <button class="detail-btn" onclick="openFullContent(${item.id}, event)">📄 Read Full</button>
+              <button class="detail-btn" onclick="loadRelated(${item.id}, this, event)">🔗 Related</button>
+            </div>
+            <div class="related-section" id="related-${item.id}" style="display:none;"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function toggleDetail(card, event) {
+      if (event.target.closest('.action-btn') || event.target.closest('a') || event.target.closest('.detail-btn')) return;
+      if (compactMode) return;
+      const detail = card.querySelector('.feed-card-detail');
+      detail.classList.toggle('open');
+    }
+
+    // F1: Full content modal
+    async function openFullContent(id, event) {
+      event.stopPropagation();
+      try {
+        const resp = await fetch(`/web/item/${id}/full`, { headers: { 'X-CSRFToken': CSRF } });
+        const data = await resp.json();
+        if (!resp.ok) return;
+        document.getElementById('modalTitle').innerHTML = esc(data.title);
+        document.getElementById('modalMeta').innerHTML = `
+          ${severityBadge(data.severity)}
+          <span class="chip source">${esc(data.feed_name)}</span>
+          <span class="chip">${timeAgo(data.published)}</span>
+          ${(data.tags || []).map(t => `<span class="chip tag">${esc(t)}</span>`).join('')}
+        `;
+        const body = document.getElementById('modalBody');
+        let bodyHtml = '';
+
+        // Show HTML content if available
+        const content = data.content_html || '';
+        if (content && content.includes('<')) {
+          // Render as HTML
+          bodyHtml = content;
+        } else if (content) {
+          // Plain text — wrap in paragraphs
+          bodyHtml = '<p>' + esc(content).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>') + '</p>';
+        } else {
+          bodyHtml = '<p style="color:var(--muted)">No extended content available for this item.</p>';
+        }
+
+        // Add IOCs section if present
+        const iocs = data.iocs || {};
+        const iocSections = [];
+        if (iocs.cves && iocs.cves.length) iocSections.push({label: 'CVEs', items: iocs.cves});
+        if (iocs.ips && iocs.ips.length) iocSections.push({label: 'IPs', items: iocs.ips});
+        if (iocs.domains && iocs.domains.length) iocSections.push({label: 'Domains', items: iocs.domains});
+        if (iocs.hashes && iocs.hashes.length) iocSections.push({label: 'Hashes', items: iocs.hashes});
+        if (iocSections.length) {
+          bodyHtml += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);">';
+          bodyHtml += '<h4 style="font-size:0.74rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin:0 0 10px;">Indicators of Compromise</h4>';
+          for (const s of iocSections) {
+            bodyHtml += `<div style="margin-bottom:10px;"><strong style="font-size:0.78rem;color:var(--muted);">${esc(s.label)}</strong><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;">`;
+            for (const val of s.items) {
+              bodyHtml += `<span class="ioc-item">${esc(val)}</span>`;
+            }
+            bodyHtml += '</div></div>';
+          }
+          bodyHtml += '</div>';
+        }
+
+        body.innerHTML = bodyHtml;
+        // Sanitize: remove scripts, event handlers
+        body.querySelectorAll('script').forEach(s => s.remove());
+        body.querySelectorAll('*').forEach(el => {
+          for (const attr of [...el.attributes]) {
+            if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+          }
+        });
+        if (data.link) {
+          body.innerHTML += `<p style="margin-top:16px;"><a href="${safeHref(data.link)}" target="_blank" rel="noopener" class="detail-btn" style="display:inline-block;">🔗 Open Original Article →</a></p>`;
+        }
+        document.getElementById('fullModal').classList.add('open');
+      } catch(e) { console.error('Read Full error:', e); }
+    }
+
+    function closeFullModal() {
+      document.getElementById('fullModal').classList.remove('open');
+    }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFullModal(); });
+
+    // F6: Related items
+    async function loadRelated(id, btn, event) {
+      event.stopPropagation();
+      const container = document.getElementById(`related-${id}`);
+      if (container.style.display === 'block') { container.style.display = 'none'; return; }
+      btn.textContent = '⏳ Loading…';
+      try {
+        const resp = await fetch(`/web/item/${id}/related`, { headers: { 'X-CSRFToken': CSRF } });
+        const data = await resp.json();
+        if (!data.related || data.related.length === 0) {
+          container.innerHTML = '<h4>Related Articles</h4><p style="color:var(--muted);font-size:0.82rem;">No related articles found.</p>';
+        } else {
+          container.innerHTML = '<h4>Related Articles</h4>' + data.related.map(r => `
+            <div class="related-item" style="flex-direction:column;align-items:flex-start;gap:4px;padding:8px 0;">
+              <div style="display:flex;align-items:center;gap:8px;width:100%;">
+                ${severityBadge(r.severity)}
+                <a href="${safeHref(r.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="flex:1;">${esc(r.title)}</a>
+                <span style="color:var(--muted);font-size:0.72rem;white-space:nowrap;">${esc(r.feed_name)} · ${timeAgo(r.published)}</span>
+              </div>
+              ${r.summary ? `<div style="font-size:0.78rem;color:var(--muted);line-height:1.4;padding-left:4px;">${esc(r.summary)}${r.summary.length >= 200 ? '…' : ''}</div>` : ''}
+              <div style="font-size:0.7rem;color:var(--accent);padding-left:4px;">↳ ${esc(r.reason)}</div>
+            </div>
+          `).join('');
+        }
+        container.style.display = 'block';
+      } catch(e) {
+        container.innerHTML = '<p style="color:var(--danger);font-size:0.82rem;">Failed to load related articles.</p>';
+        container.style.display = 'block';
+      }
+      btn.textContent = '🔗 Related';
+    }
+
+    // U2: New items polling
+    async function pollNewItems() {
+      try {
+        const resp = await fetch(`/web/new-count?since=${encodeURIComponent(lastLoadTimestamp)}`, {
+          headers: { 'X-CSRFToken': CSRF }
+        });
+        const data = await resp.json();
+        const badge = document.getElementById('newBadge');
+        if (data.count > 0) {
+          document.getElementById('newBadgeCount').textContent = data.count;
+          badge.classList.add('show');
+        } else {
+          badge.classList.remove('show');
+        }
+      } catch(e) {}
+    }
+
+    function dismissNewBadge() {
+      document.getElementById('newBadge').classList.remove('show');
+      lastLoadTimestamp = new Date().toISOString();
+      applyFilters(0);
+    }
+
+    // U1: Compact/full toggle
+    function applyCompactMode() {
+      const list = document.getElementById('feedList');
+      const btn = document.getElementById('btnCompact');
+      list.classList.toggle('compact', compactMode);
+      btn.classList.toggle('active', compactMode);
+      btn.textContent = compactMode ? '☰ Full View' : '☰ Compact';
+    }
+
+    async function toggleStar(id, btn, event) {
+      event.stopPropagation();
+      try {
+        const resp = await fetch(`/web/item/${id}/star`, {
+          method: 'POST', headers: { 'X-CSRFToken': CSRF }
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          btn.textContent = data.is_starred ? '★' : '☆';
+          btn.classList.toggle('starred', data.is_starred);
+          if (starredFilter && !data.is_starred) applyFilters(currentOffset);
+        }
+      } catch(e) {}
+    }
+
+    async function toggleRead(id, btn, event) {
+      event.stopPropagation();
+      try {
+        const resp = await fetch(`/web/item/${id}/read`, {
+          method: 'POST', headers: { 'X-CSRFToken': CSRF }
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          btn.textContent = data.is_read ? '📖' : '📩';
+          const card = btn.closest('.feed-card');
+          card.classList.toggle('read', data.is_read);
+          if (unreadFilter && data.is_read) applyFilters(currentOffset);
+        }
+      } catch(e) {}
+    }
+
+    function getFilterParams(includeFeed = true) {
+      const params = new URLSearchParams();
+      const severity = document.getElementById('filterSeverity').value;
+      const feedId = document.getElementById('filterFeed').value;
+      const category = document.getElementById('filterCategory').value;
+      const sector = document.getElementById('filterSector').value;
+      const timeRange = document.getElementById('filterTimeRange').value;
+      const search = document.getElementById('filterSearch').value.trim();
+
+      if (severity !== 'all') params.set('severity', severity);
+      if (includeFeed && feedId) params.set('feed_id', feedId);
+      if (category) params.set('category', category);
+      if (sector) params.set('sector', sector);
+      if (timeRange) params.set('time_range', timeRange);
+      if (search) params.set('search', search);
+      if (starredFilter) params.set('starred', 'true');
+      if (unreadFilter) params.set('unread', 'true');
+      if (germanyFilter) params.set('country', 'de');
+      if (hasCVEFilter) params.set('has_cves', 'true');
+      if (hasIOCFilter) params.set('has_iocs', 'true');
+
+      return params;
+    }
+
+    function hasActiveFilters() {
+      return document.getElementById('filterSeverity').value !== 'all'
+        || document.getElementById('filterFeed').value
+        || document.getElementById('filterCategory').value
+        || document.getElementById('filterSector').value
+        || document.getElementById('filterTimeRange').value
+        || document.getElementById('filterSearch').value.trim()
+        || starredFilter || unreadFilter || germanyFilter || hasCVEFilter || hasIOCFilter;
+    }
+
+    async function loadItems(offset) {
+      currentOffset = offset || 0;
+      showLoader('🦅 Scanning threat feeds…');
+
+      const params = getFilterParams(true);
+      params.set('limit', PAGE_SIZE);
+      params.set('offset', currentOffset);
+
+      try {
+        const resp = await fetch(`/web/feed-items?${params}`, {
+          headers: { 'X-CSRFToken': CSRF }
+        });
+        const data = await resp.json();
+        totalItems = data.total;
+        updateFilteredStats(data.total, data.filtered_stats);
+
+        const list = document.getElementById('feedList');
+        if (!data.items || data.items.length === 0) {
+          list.innerHTML = '<div class="status-msg">No threat items found matching your filters.</div>';
+          document.getElementById('pagination').style.display = 'none';
+          return;
+        }
+
+        list.innerHTML = data.items.map((item, i) => {
+          const html = renderFeedCard(item);
+          return html.replace('class="feed-card', `style="--i:${i}" class="feed-card`);
+        }).join('');
+
+        const pag = document.getElementById('pagination');
+        pag.style.display = 'flex';
+        document.getElementById('btnPrev').disabled = currentOffset === 0;
+        document.getElementById('btnNext').disabled = currentOffset + PAGE_SIZE >= totalItems;
+        const pageNum = Math.floor(currentOffset / PAGE_SIZE) + 1;
+        const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+        document.getElementById('pageInfo').textContent = `Page ${pageNum} of ${totalPages} (${totalItems} items)`;
+      } catch(e) {
+        document.getElementById('feedList').innerHTML = `<div class="status-msg" style="color:var(--danger)">Failed to load: ${esc(e.message)}</div>`;
+      } finally {
+        hideLoader();
+        lastLoadTimestamp = new Date().toISOString();
+        applyCompactMode();
+      }
+    }
+
+    function updateFilteredStats(total, stats) {
+      if (!stats) return;
+      document.getElementById('statTotal').textContent = total;
+      document.getElementById('statCritical').textContent = stats.critical || 0;
+      document.getElementById('statHigh').textContent = stats.high || 0;
+      document.getElementById('statUnread').textContent = stats.unread || 0;
+      document.getElementById('stat24h').textContent = stats.time_window_count || 0;
+      document.getElementById('stat24hLabel').textContent = stats.time_window_label || 'Last 24h';
+      document.getElementById('statTotal').closest('.stat-mini').querySelector('.stat-lbl').textContent = hasActiveFilters() ? 'Filtered' : 'Total Items';
+    }
+
+    async function loadStats() {
+      try {
+        const resp = await fetch('/web/analytics', { headers: { 'X-CSRFToken': CSRF } });
+        const data = await resp.json();
+        document.getElementById('statTotal').textContent = data.total;
+        document.getElementById('statCritical').textContent = data.severity_counts?.critical || 0;
+        document.getElementById('statHigh').textContent = data.severity_counts?.high || 0;
+        document.getElementById('statUnread').textContent = data.unread_count;
+        document.getElementById('stat24h').textContent = data.last_24h;
+        document.getElementById('stat24hLabel').textContent = 'Last 24h';
+        document.getElementById('statTotal').closest('.stat-mini').querySelector('.stat-lbl').textContent = 'Total Items';
+      } catch(e) {}
+    }
+
+    async function loadFeedOptions() {
+      const sel = document.getElementById('filterFeed');
+      const currentValue = sel.value;
+      const params = getFilterParams(false);
+
+      try {
+        const resp = await fetch(`/web/feed-status?${params}`, { headers: { 'X-CSRFToken': CSRF } });
+        const data = await resp.json();
+        sel.innerHTML = '<option value="">All Feeds</option>';
+        (data.feeds || []).forEach(f => {
+          const opt = document.createElement('option');
+          opt.value = f.id;
+          opt.textContent = `${f.name} (${f.item_count})`;
+          if (String(f.id) === currentValue) opt.selected = true;
+          sel.appendChild(opt);
+        });
+      } catch(e) {}
+    }
+
+    function scheduleFilterApply() {
+      clearTimeout(filterSearchTimer);
+      filterSearchTimer = setTimeout(() => applyFilters(0), 250);
+    }
+
+    function resetToggleButton(id, isActive) {
+      document.getElementById(id).classList.toggle('active', isActive);
+    }
+
+    function clearFilters() {
+      document.getElementById('filterSeverity').value = 'all';
+      document.getElementById('filterFeed').value = '';
+      document.getElementById('filterCategory').value = '';
+      document.getElementById('filterSector').value = '';
+      document.getElementById('filterTimeRange').value = '';
+      document.getElementById('filterSearch').value = '';
+      starredFilter = false;
+      unreadFilter = false;
+      germanyFilter = false;
+      hasCVEFilter = false;
+      hasIOCFilter = false;
+      resetToggleButton('filterStarred', false);
+      resetToggleButton('filterUnread', false);
+      resetToggleButton('filterGermany', false);
+      resetToggleButton('filterHasCVE', false);
+      resetToggleButton('filterHasIOC', false);
+      applyFilters(0);
+    }
+
+    async function applyFilters(offset = 0) {
+      await loadFeedOptions();
+      await loadItems(offset);
+    }
+
+    function bindToggleFilter(buttonId, stateAccessor) {
+      document.getElementById(buttonId).addEventListener('click', function() {
+        const nextValue = !stateAccessor.get();
+        stateAccessor.set(nextValue);
+        this.classList.toggle('active', nextValue);
+        applyFilters(0);
+      });
+    }
+
+    // ── Event listeners ──
+    document.getElementById('btnApply').addEventListener('click', () => applyFilters(0));
+    document.getElementById('btnClearFilters').addEventListener('click', clearFilters);
+    document.getElementById('filterSearch').addEventListener('keydown', e => { if (e.key === 'Enter') applyFilters(0); });
+    document.getElementById('filterSearch').addEventListener('input', scheduleFilterApply);
+    document.getElementById('btnPrev').addEventListener('click', () => loadItems(Math.max(0, currentOffset - PAGE_SIZE)));
+    document.getElementById('btnNext').addEventListener('click', () => loadItems(currentOffset + PAGE_SIZE));
+
+    ['filterSeverity', 'filterFeed', 'filterCategory', 'filterSector', 'filterTimeRange'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => applyFilters(0));
+    });
+
+    bindToggleFilter('filterStarred', {
+      get: () => starredFilter,
+      set: value => { starredFilter = value; }
+    });
+    bindToggleFilter('filterUnread', {
+      get: () => unreadFilter,
+      set: value => { unreadFilter = value; }
+    });
+    bindToggleFilter('filterGermany', {
+      get: () => germanyFilter,
+      set: value => { germanyFilter = value; }
+    });
+    bindToggleFilter('filterHasCVE', {
+      get: () => hasCVEFilter,
+      set: value => { hasCVEFilter = value; }
+    });
+    bindToggleFilter('filterHasIOC', {
+      get: () => hasIOCFilter,
+      set: value => { hasIOCFilter = value; }
+    });
+
+    const refreshBtn = document.getElementById('btnRefresh');
+    if (refreshBtn) {
+      refreshBtn.addEventListener('click', async function() {
+        this.disabled = true;
+        this.textContent = '🔄 Refreshing…';
+        showLoader('🦅 Refreshing all feeds…');
+        try {
+          const resp = await fetch('/web/refresh', {
+            method: 'POST', headers: { 'X-CSRFToken': CSRF }
+          });
+          const data = await resp.json();
+          this.textContent = `✓ ${data.new_items || 0} new`;
+          setTimeout(() => { this.textContent = '🔄 Refresh Feeds'; this.disabled = false; }, 3000);
+          applyFilters(0);
+        } catch(e) {
+          this.textContent = '✗ Failed';
+          setTimeout(() => { this.textContent = '🔄 Refresh Feeds'; this.disabled = false; }, 3000);
+        } finally {
+          hideLoader();
+        }
+      });
+    }
+
+    // ── Theme toggle ──
+    const themeBtn = document.getElementById('themeBtn');
+    function applyTheme(light) {
+      document.body.classList.toggle('light', light);
+      themeBtn.textContent = light ? '☀' : '🌙';
+    }
+    applyTheme(localStorage.getItem('theme') === 'light');
+    themeBtn.addEventListener('click', () => {
+      const isLight = !document.body.classList.contains('light');
+      applyTheme(isLight);
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    });
+
+    // ── Hamburger menu ──
+    const menuToggle = document.getElementById('menuToggle');
+    const navLinks = document.querySelector('.nav-links');
+    menuToggle.addEventListener('click', () => {
+      navLinks.classList.toggle('open');
+      menuToggle.textContent = navLinks.classList.contains('open') ? '✕' : '☰';
+    });
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.nav-links') && !e.target.closest('#menuToggle')) {
+        navLinks.classList.remove('open');
+        menuToggle.textContent = '☰';
+      }
+    });
+
+    // ── U1: Compact toggle ──
+    document.getElementById('btnCompact').addEventListener('click', () => {
+      compactMode = !compactMode;
+      localStorage.setItem('compactMode', compactMode);
+      applyCompactMode();
+    });
+
+    // ── U2: Poll for new items every 60s ──
+    newItemPollTimer = setInterval(pollNewItems, 60000);
+
+    // ── Initial load ──
+    loadStats();
+    applyFilters(0);
+  </script>
+</body>
+</html>

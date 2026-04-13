@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <title>HAWK RADAR — Login</title>
+  <style>
+    :root {
+      --bg: #0a0f1a;
+      --panel: #121a2a;
+      --line: #243149;
+      --text: #e6eefc;
+      --muted: #9aa8c3;
+      --accent: #4cc9f0;
+      --ok: #80ed99;
+      --warn: #ffb703;
+    }
+
+    * { box-sizing: border-box; margin: 0; }
+    html { scroll-behavior: smooth; }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
+
+    @keyframes cardIn {
+      from { opacity: 0; transform: translateY(24px) scale(0.97); }
+      to   { opacity: 1; transform: none; }
+    }
+    @keyframes shimmer {
+      0%   { background-position: -200% 0; }
+      100% { background-position: 200% 0; }
+    }
+
+    body {
+      margin: 0;
+      font-family: 'Roboto', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      background: radial-gradient(circle at top right, #18263d 0%, var(--bg) 45%);
+      color: var(--text);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+
+    .login-card {
+      width: 100%;
+      max-width: 440px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 48px 44px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: 0 16px 64px rgba(0,0,0,.35), 0 0 0 1px rgba(76,201,240,.06);
+      animation: cardIn 0.5s ease-out;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+
+    .brand-icon {
+      font-size: 2.4rem;
+      line-height: 1;
+      filter: drop-shadow(0 0 10px rgba(76,201,240,.45));
+      animation: pulse 3s ease-in-out infinite;
+    }
+
+    @keyframes pulse { 0%,100% { filter: drop-shadow(0 0 10px rgba(76,201,240,.45)); } 50% { filter: drop-shadow(0 0 18px rgba(76,201,240,.7)); } }
+
+    h1 {
+      margin: 0;
+      font-size: 1.8rem;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+    }
+
+    .subtitle {
+      margin: 4px 0 32px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      color: var(--muted);
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 8px;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0d1422;
+      color: var(--text);
+      padding: 13px 16px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(76, 201, 240, 0.12), 0 0 12px rgba(76,201,240,0.08);
+    }
+
+    input::placeholder { color: var(--muted); opacity: .6; }
+
+    .btn-submit {
+      width: 100%;
+      border: none;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), #3aa0d8);
+      color: #05243a;
+      padding: 15px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      margin-top: 12px;
+      transition: opacity 0.15s, transform 0.1s, box-shadow 0.2s;
+      box-shadow: 0 4px 16px rgba(76,201,240,.2);
+    }
+
+    .btn-submit:hover {
+      opacity: 0.92;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(76,201,240,.3);
+    }
+
+    .btn-submit:active {
+      transform: translateY(0);
+      box-shadow: 0 2px 8px rgba(76,201,240,.15);
+    }
+
+    .alert-error {
+      background: #231417;
+      border: 1px solid #6d2a2a;
+      color: #ff9b9b;
+      padding: 11px 14px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+      animation: fadeIn .3s ease-out;
+    }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+    @media (max-width: 480px) {
+      .login-card { padding: 36px 24px; border-radius: 16px; }
+      h1 { font-size: 1.5rem; }
+      .brand-icon { font-size: 2rem; }
+      .subtitle { font-size: 0.84rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="login-card">
+    <div class="brand">
+      <span class="brand-icon">🦅</span>
+      <h1>HAWK RADAR 📡</h1>
+    </div>
+    <p class="subtitle">RSS Threat Intelligence Dashboard for Incident Response.</p>
+
+    {% if error %}
+    <div class="alert-error">{{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="/login" autocomplete="on">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="form-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" autocomplete="username" required autofocus />
+      </div>
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required />
+      </div>
+      <button type="submit" class="btn-submit">Sign In →</button>
+    </form>
+  </div>
+</body>
+</html>

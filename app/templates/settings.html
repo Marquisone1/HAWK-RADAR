@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <title>HAWK RADAR — Settings</title>
+  <style>
+    :root {
+      --bg: #0a0f1a; --panel: #121a2a; --line: #243149;
+      --text: #e6eefc; --muted: #9aa8c3; --accent: #4cc9f0;
+      --ok: #80ed99; --warn: #ffb703;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    html { scroll-behavior: smooth; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+    body {
+      margin: 0; font-family: 'Roboto', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+      background: radial-gradient(circle at top right, #18263d 0%, var(--bg) 45%);
+      color: var(--text); min-height: 100vh;
+      display: grid; place-items: center; padding: 16px;
+    }
+    .settings-card {
+      width: 100%; max-width: 580px; background: var(--panel);
+      border: 1px solid var(--line); border-radius: 20px; padding: 44px 44px 48px;
+      backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      box-shadow: 0 16px 64px rgba(0,0,0,.25);
+      animation: fadeIn .45s ease-out;
+    }
+    .top-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 32px; padding-bottom: 20px; border-bottom: 1px solid var(--line);
+    }
+    .nav-back {
+      text-decoration: none; color: var(--muted); font-size: 0.9rem;
+      display: flex; align-items: center; gap: 6px; transition: color 0.15s;
+    }
+    .nav-back:hover { color: var(--accent); }
+    .nav-logout {
+      text-decoration: none; color: #ff9b9b; font-size: 0.88rem;
+      border: 1px solid #6d2a2a; padding: 6px 14px; border-radius: 8px;
+      transition: border-color 0.15s;
+    }
+    .nav-logout:hover { border-color: #ff9b9b; }
+
+    h1 { margin: 0 0 4px; font-size: 1.6rem; letter-spacing: 0.06em; color: var(--accent); }
+    .subtitle { margin: 0 0 28px; color: var(--muted); font-size: 0.92rem; }
+
+    .section-title {
+      font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--muted); margin: 0 0 16px; padding-bottom: 8px;
+      border-bottom: 1px solid var(--line);
+    }
+    .form-group { margin-bottom: 20px; }
+    label {
+      display: block; color: var(--muted); font-size: 0.76rem;
+      text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%; border: 1px solid var(--line); border-radius: 10px;
+      background: #0d1422; color: var(--text); padding: 13px 16px;
+      font-size: 1rem; outline: none; transition: border-color 0.15s;
+    }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(76,201,240,0.12); }
+
+    .btn-save {
+      width: 100%; border: none; border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), #3aa0d8);
+      color: #05243a; padding: 14px; font-size: 1.05rem; font-weight: 700;
+      cursor: pointer; letter-spacing: 0.04em; margin-top: 8px;
+      transition: opacity 0.15s, transform 0.1s, box-shadow 0.2s;
+      box-shadow: 0 4px 16px rgba(76,201,240,.15);
+    }
+    .btn-save:hover { opacity: 0.92; transform: translateY(-2px); box-shadow: 0 6px 24px rgba(76,201,240,.25); }
+
+    .alert { padding: 11px 14px; border-radius: 10px; font-size: 0.9rem; margin-bottom: 20px; }
+    .alert.success { background: #0d251a; border: 1px solid #1a5c37; color: var(--ok); }
+    .alert.error { background: #231417; border: 1px solid #6d2a2a; color: #ff9b9b; }
+
+    .hint { margin-top: 6px; color: var(--muted); font-size: 0.78rem; }
+    .divider { border: none; border-top: 1px solid var(--line); margin: 28px 0; }
+
+    @media (max-width: 640px) {
+      .settings-card { padding: 28px 20px 32px; border-radius: 14px; }
+      .top-nav { flex-direction: column; gap: 12px; align-items: flex-start; }
+      .top-nav > div { flex-wrap: wrap; }
+      h1 { font-size: 1.3rem; }
+      .subtitle { font-size: 0.84rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="settings-card">
+    <div class="top-nav">
+      <a href="/" class="nav-back">← Back to Radar</a>
+      <div style="display:flex;gap:10px;">
+        <a href="/dashboard" class="nav-back" style="border:1px solid var(--line);padding:6px 14px;border-radius:8px;">📊 Analytics</a>
+        {% if session.get('site_role') == 'admin' %}
+        <a href="/admin" class="nav-back" style="border:1px solid var(--line);padding:6px 14px;border-radius:8px;">👥 Admin</a>
+        {% endif %}
+        <a href="/logout" class="nav-logout">Logout</a>
+      </div>
+    </div>
+
+    <h1>⚙ Settings</h1>
+    <p class="subtitle">Manage your account{% if session.get('site_role') == 'admin' %} &amp; server configuration{% endif %}.</p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" action="/settings" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+      <p class="section-title">Change Username</p>
+      <div class="form-group">
+        <label for="username">New Username</label>
+        <input type="text" id="username" name="username" value="{{ current_username }}" required autocomplete="off" />
+      </div>
+
+      <hr class="divider" />
+      <p class="section-title">Change Password</p>
+      <div class="form-group">
+        <label for="password">New Password</label>
+        <input type="password" id="password" name="password" placeholder="Leave blank to keep current password" autocomplete="new-password" />
+        <p class="hint">Minimum {{ min_password_len }} characters. Leave blank to keep your current password.</p>
+      </div>
+      <div class="form-group">
+        <label for="confirm_password">Confirm New Password</label>
+        <input type="password" id="confirm_password" name="confirm_password" placeholder="Repeat new password" autocomplete="new-password" />
+      </div>
+
+      <button type="submit" class="btn-save">Save Changes</button>
+    </form>
+
+    {% if session.get('site_role') == 'admin' %}
+    <hr class="divider" />
+    <p class="section-title">Database Backup &amp; Restore</p>
+
+    <p class="hint" style="margin-bottom:16px;">
+      A backup is created automatically every 24 hours and stored in <code style="color:var(--accent)">/data/backups/</code>.
+      Up to 3 days of backups are kept.
+    </p>
+
+    <div id="backupList" style="margin-bottom:16px; font-size:0.84rem; color:var(--muted);">Loading backups…</div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
+      <form method="POST" action="/backup/run" style="flex:1; min-width:160px;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+        <button type="submit" class="btn-save" style="background:#1a3a5a; color:var(--accent); font-size:0.92rem; padding:11px;">
+          💾 Save Backup Now
+        </button>
+      </form>
+      <a href="/backup/export" class="btn-save"
+         style="flex:1; min-width:160px; background:#0d251a; color:var(--ok); font-size:0.92rem; padding:11px; text-align:center; text-decoration:none; border-radius:10px; display:inline-block; box-sizing:border-box;">
+        ⬇ Download Database
+      </a>
+    </div>
+
+    <form method="POST" action="/backup/import" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+      <div class="form-group">
+        <label for="db_file">Restore from Backup File (.db)</label>
+        <input type="file" id="db_file" name="db_file" accept=".db"
+               style="width:100%; padding:10px 14px; border:1px solid var(--line); border-radius:10px;
+                      background:#0d1422; color:var(--text); font-size:0.9rem; cursor:pointer;" />
+        <p class="hint" style="color:#ff9b9b;">
+          ⚠ This will overwrite the live database. A safety backup is created automatically before restoring.
+          You will be logged out after a successful restore.
+        </p>
+      </div>
+      <button type="submit" class="btn-save"
+              style="background:#3a1a1a; color:#ff9b9b; font-size:0.92rem; padding:11px;"
+              onclick="return confirm('Overwrite the live database with this file? A safety backup will be created first.')">
+        ⚠ Restore Database
+      </button>
+    </form>
+    {% endif %}
+  </div>
+
+  <script>
+    fetch('/backup/list')
+      .then(r => r.json())
+      .then(data => {
+        const el = document.getElementById('backupList');
+        if (!el) return;
+        if (!data.backups || data.backups.length === 0) {
+          el.textContent = 'No backups yet. The first automatic backup runs ~60 seconds after startup.';
+          return;
+        }
+        const rows = data.backups.map(b =>
+          `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--line);">
+            <span style="font-family:monospace;">${b.name}</span>
+            <span>${b.size_kb} KB</span>
+          </div>`
+        ).join('');
+        el.innerHTML = `<div style="max-height:160px;overflow-y:auto;">${rows}</div>`;
+      })
+      .catch(() => {
+        const el = document.getElementById('backupList');
+        if (el) el.textContent = 'Could not load backup list.';
+      });
+  </script>
+</body>
+</html>
