@@ -1,3 +1,5 @@
+![HAWK RADAR Icon](https://raw.githubusercontent.com/microsoft/fluentui-emoji/main/assets/Eagle/3D/eagle_3d.png)
+
 # HAWK RADAR
 
 ![Status](https://img.shields.io/badge/status-experimental-orange)
