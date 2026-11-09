@@ -1,18 +1,47 @@
+import ipaddress
 import logging
 import re
 import threading
+from calendar import timegm
 from datetime import datetime, timezone
 from html import unescape
 from urllib.parse import urlparse
 
 import feedparser
+import requests
 from bs4 import BeautifulSoup
+from sqlalchemy import text as sql_text
+from sqlalchemy.orm import defer
 
 from .models import db, RSSFeed, FeedItem
 
 logger = logging.getLogger(__name__)
 
 _refresh_lock = threading.Lock()
+
+_FETCH_TIMEOUT = (5, 20)  # connect, read (seconds)
+_FETCH_HEADERS = {
+    "User-Agent": feedparser.USER_AGENT,
+    "Accept": "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.1",
+}
+
+# Bump when severity, tag, or IOC rules change so stored items are reprocessed.
+_RULES_VERSION = 2
+_REPROCESS_BATCH_SIZE = 500
+
+
+def _keyword_re(keywords: list[str]) -> re.Pattern:
+    """Match lowercase keywords as whole words, allowing a plural "s"."""
+    parts = []
+    for keyword in keywords:
+        part = re.escape(keyword)
+        if keyword[0].isalnum():
+            part = r"(?<![a-z0-9])" + part
+        if keyword[-1].isalnum():
+            part += r"s?(?![a-z0-9])"
+        parts.append(part)
+    return re.compile("|".join(parts))
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # IOC extraction patterns
@@ -51,6 +80,44 @@ _DOMAIN_CONTEXT_KEYWORDS = {
     'phishing', 'c2', 'callback', 'beacon', 'botnet', 'host', 'server',
     'dns', 'resolves', 'redirect', 'payload', 'download', 'contact', 'cnc'
 }
+
+_DEFANG_RULES = [
+    (re.compile(r'hxxp', re.IGNORECASE), 'http'),
+    (re.compile(r'[\[({]\s*(?:\.|dot)\s*[\])}]', re.IGNORECASE), '.'),
+    (re.compile(r'[\[({]\s*:\s*[\])}]'), ':'),
+    (re.compile(r'[\[({]\s*/\s*[\])}]'), '/'),
+]
+
+_IP_CONTEXT_RE = _keyword_re([
+    'ip', 'ipv4', 'address', 'ioc', 'indicator', 'c2', 'cnc', 'c&c',
+    'command and control', 'beacon', 'callback', 'botnet', 'malicious',
+    'attacker', 'scanning', 'connects to', 'connection to',
+])
+_VERSION_PREFIX_RE = re.compile(
+    r'(?:\b(?:version|ver\.?|release|build|firmware|before|through|prior to|fixed in|upgrade to|update to)s?\s*:?\s*|\bv)$'
+)
+
+
+def _refang(text: str) -> str:
+    for pattern, replacement in _DEFANG_RULES:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _is_public_ip(value: str) -> bool:
+    try:
+        return ipaddress.ip_address(value).is_global
+    except ValueError:
+        return False
+
+
+def _ip_is_indicator(text: str, start: int, end: int, defanged: bool) -> bool:
+    """Separate real IP indicators from four-part version numbers."""
+    if _VERSION_PREFIX_RE.search(text[max(0, start - 24):start].lower()):
+        return False
+    if defanged:
+        return True
+    return bool(_IP_CONTEXT_RE.search(text[max(0, start - 60):min(len(text), end + 60)].lower()))
 
 
 def _registrable_domain(hostname: str) -> str:
@@ -102,9 +169,15 @@ def extract_iocs(text: str, ignored_domains: set[str] | None = None) -> dict:
     if not text:
         return {"ips": [], "domains": [], "cves": [], "hashes": []}
 
-    ips = list(set(_IPV4_RE.findall(text)))
-    # Filter private/loopback IPs
-    ips = [ip for ip in ips if not ip.startswith(('10.', '127.', '0.', '192.168.', '169.254.'))]
+    refanged = _refang(text)
+    defanged = refanged != text
+    text = refanged
+
+    ips = list({
+        match.group(0)
+        for match in _IPV4_RE.finditer(text)
+        if _is_public_ip(match.group(0)) and _ip_is_indicator(text, match.start(), match.end(), defanged)
+    })
 
     ignored_domains = {domain.lower() for domain in (ignored_domains or set())}
     filtered_domains = []
@@ -152,24 +225,22 @@ _TAG_KEYWORDS = {
     "phishing": ["phishing", "spear-phishing", "credential harvest", "fake login"],
     "apt": ["apt-", "advanced persistent threat", "state-sponsored", "nation-state", "apt28", "apt29", "lazarus", "cozy bear", "fancy bear"],
     "zero-day": ["zero-day", "0-day", "zero day", "zeroday"],
-    "malware": ["malware", "trojan", "backdoor", "rootkit", "worm", "spyware", "infostealer", "stealer", "rat "],
+    "malware": ["malware", "trojan", "backdoor", "rootkit", "worm", "spyware", "infostealer", "stealer", "rat"],
     "ddos": ["ddos", "denial of service", "distributed denial"],
     "supply-chain": ["supply chain", "supply-chain", "solarwinds", "codecov"],
     "cve": ["cve-"],
-    "exploit": ["exploit", "proof of concept", "poc", "rce", "remote code execution"],
-    "vulnerability": ["vulnerability", "vulnerabilities", "patch", "security update", "security advisory"],
+    "exploit": ["exploit", "exploited", "exploiting", "exploitation", "proof of concept", "proof-of-concept", "poc", "rce", "remote code execution"],
+    "vulnerability": ["vulnerability", "vulnerabilities", "patch", "patched", "patching", "security update", "security advisory"],
     "data-breach": ["data breach", "data leak", "leaked", "exposed data", "compromised data"],
     "botnet": ["botnet", "bot net", "command and control", "c2 server"],
 }
 
+_TAG_PATTERNS = {tag: _keyword_re(keywords) for tag, keywords in _TAG_KEYWORDS.items()}
+
 
 def extract_tags(title: str, summary: str) -> list[str]:
     combined = f"{title} {summary}".lower()
-    tags = []
-    for tag, keywords in _TAG_KEYWORDS.items():
-        if any(kw in combined for kw in keywords):
-            tags.append(tag)
-    return tags
+    return [tag for tag, pattern in _TAG_PATTERNS.items() if pattern.search(combined)]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -182,7 +253,7 @@ _CRITICAL_KEYWORDS = [
     "wormable", "cvss 9", "cvss 10", "severity: critical",
 ]
 _HIGH_KEYWORDS = [
-    "high", "exploit", "ransomware", "vulnerability", "patch now",
+    "high", "exploit", "exploited", "exploiting", "exploitation", "ransomware", "vulnerability", "vulnerabilities", "patch now",
     "security update", "malware", "backdoor", "data breach",
     "privilege escalation", "code execution", "cvss 7", "cvss 8",
 ]
@@ -196,6 +267,18 @@ _LOW_KEYWORDS = [
     "awareness", "training", "cvss 1", "cvss 2", "cvss 3",
 ]
 
+_CRITICAL_RE = _keyword_re(_CRITICAL_KEYWORDS)
+_HIGH_RE = _keyword_re(_HIGH_KEYWORDS)
+_MEDIUM_RE = _keyword_re(_MEDIUM_KEYWORDS)
+_LOW_RE = _keyword_re(_LOW_KEYWORDS)
+
+# Everyday phrases that contain a severity word but say nothing about severity.
+_SEVERITY_NOISE_RE = re.compile(
+    r"critical infrastructure|critical (?:sector|role|thinking|mass)s?|(?:mission|business|safety)[- ]critical"
+    r"|high[- ](?:profile|level|end|quality|performance|school|speed|tech|ranking|value)"
+    r"|low[- ](?:level|cost|code|end|key|power|profile)"
+)
+
 _SECURITY_SIGNAL_KEYWORDS = [
     "security advisory", "security bulletin", "incident response", "threat",
     "schwachstelle", "schwachstellen", "angriff", "ausfuhren beliebigen programmcodes",
@@ -207,14 +290,14 @@ _MEDIUM_TAGS = {"phishing", "ddos", "supply-chain", "vulnerability", "cve", "mal
 
 
 def classify_severity(title: str, summary: str, tags: list[str] | None = None, iocs: dict | None = None) -> str:
-    combined = f"{title} {summary}".lower()
-    if any(kw in combined for kw in _CRITICAL_KEYWORDS):
+    combined = _SEVERITY_NOISE_RE.sub(" ", f"{title} {summary}".lower())
+    if _CRITICAL_RE.search(combined):
         return "critical"
-    if any(kw in combined for kw in _HIGH_KEYWORDS):
+    if _HIGH_RE.search(combined):
         return "high"
-    if any(kw in combined for kw in _MEDIUM_KEYWORDS):
+    if _MEDIUM_RE.search(combined):
         return "medium"
-    if any(kw in combined for kw in _LOW_KEYWORDS):
+    if _LOW_RE.search(combined):
         return "low"
 
     tags = tags or []
@@ -264,11 +347,25 @@ def _parse_date(entry) -> datetime | None:
         parsed = getattr(entry, field, None)
         if parsed:
             try:
-                from time import mktime
-                return datetime.fromtimestamp(mktime(parsed), tz=timezone.utc).replace(tzinfo=None)
+                return datetime.fromtimestamp(timegm(parsed), tz=timezone.utc).replace(tzinfo=None)
             except Exception:
                 continue
     return None
+
+
+def _analyze_item(title: str, summary: str, feed_url: str, link: str) -> tuple[list[str], dict, str]:
+    tags = extract_tags(title, summary)
+    ignored_domains = _build_ignored_domains([feed_url, link])
+    iocs = extract_iocs(f"{title} {summary}", ignored_domains=ignored_domains)
+    severity = classify_severity(title, summary, tags=tags, iocs=iocs)
+    return tags, iocs, severity
+
+
+def _record_feed_error(feed: RSSFeed, message: str) -> None:
+    feed.last_error = message[:500]
+    feed.last_fetched = datetime.utcnow()
+    db.session.commit()
+    logger.warning(f"Feed error for {feed.name}: {message[:200]}")
 
 
 def fetch_feed(feed: RSSFeed) -> int:
@@ -277,14 +374,21 @@ def fetch_feed(feed: RSSFeed) -> int:
     new_count = 0
 
     try:
-        parsed = feedparser.parse(feed.url)
+        response = requests.get(feed.url, headers=_FETCH_HEADERS, timeout=_FETCH_TIMEOUT)
+        if response.status_code >= 400:
+            _record_feed_error(feed, f"HTTP {response.status_code}")
+            return 0
 
-        if parsed.bozo and not parsed.entries:
-            error_msg = str(getattr(parsed, 'bozo_exception', 'Unknown parse error'))
-            feed.last_error = error_msg[:500]
-            feed.last_fetched = datetime.utcnow()
-            db.session.commit()
-            logger.warning(f"Feed parse error for {feed.name}: {error_msg[:200]}")
+        parsed = feedparser.parse(
+            response.content,
+            response_headers={
+                "content-type": response.headers.get("Content-Type", ""),
+                "content-location": response.url,
+            },
+        )
+
+        if not parsed.entries:
+            _record_feed_error(feed, str(getattr(parsed, 'bozo_exception', 'Feed returned no entries')))
             return 0
 
         for entry in parsed.entries:
@@ -313,10 +417,7 @@ def fetch_feed(feed: RSSFeed) -> int:
                 summary_text = _strip_html(entry.summary or "")[:5000]
 
             # Classify and extract
-            tags = extract_tags(title, summary_text)
-            ignored_domains = _build_ignored_domains([feed.url, link])
-            iocs = extract_iocs(f"{title} {summary_text}", ignored_domains=ignored_domains)
-            severity = classify_severity(title, summary_text, tags=tags, iocs=iocs)
+            tags, iocs, severity = _analyze_item(title, summary_text, feed.url, link)
 
             item = FeedItem(
                 feed_id=feed.id,
@@ -352,6 +453,43 @@ def fetch_feed(feed: RSSFeed) -> int:
     return new_count
 
 
+def reprocess_items_if_needed() -> int:
+    """Re-derive severity, tags, and IOCs for stored items after a rules change."""
+    if db.engine.dialect.name != "sqlite":
+        return 0
+
+    with _refresh_lock:
+        if db.session.execute(sql_text("PRAGMA user_version")).scalar() >= _RULES_VERSION:
+            db.session.rollback()
+            return 0
+
+        feed_urls = {feed.id: feed.url for feed in RSSFeed.query.all()}
+        processed = 0
+        last_id = 0
+        while True:
+            batch = (
+                FeedItem.query.options(defer(FeedItem.content_html))
+                .filter(FeedItem.id > last_id)
+                .order_by(FeedItem.id)
+                .limit(_REPROCESS_BATCH_SIZE)
+                .all()
+            )
+            if not batch:
+                break
+            for item in batch:
+                item.tags, item.iocs, item.severity = _analyze_item(
+                    item.title or "", item.summary or "", feed_urls.get(item.feed_id, ""), item.link or ""
+                )
+            last_id = batch[-1].id
+            processed += len(batch)
+            db.session.commit()
+
+        db.session.execute(sql_text(f"PRAGMA user_version = {_RULES_VERSION}"))
+        db.session.commit()
+        logger.info(f"Reprocessed {processed} stored items (rules version {_RULES_VERSION})")
+        return processed
+
+
 def refresh_all_feeds() -> dict:
     """Refresh all enabled feeds. Returns summary stats."""
     with _refresh_lock:
@@ -362,6 +500,8 @@ def refresh_all_feeds() -> dict:
             try:
                 count = fetch_feed(feed)
                 total_new += count
+                if feed.last_error:
+                    errors += 1
             except Exception as exc:
                 errors += 1
                 logger.warning(f"Feed refresh error for {feed.name}: {exc}")

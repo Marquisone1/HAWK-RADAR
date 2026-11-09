@@ -222,6 +222,13 @@
       return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    function safeHref(url) {
+      if (!url) return '#';
+      const s = String(url).trim().toLowerCase();
+      if (s.startsWith('http://') || s.startsWith('https://')) return esc(url);
+      return '#';
+    }
+
     function setStatus(message, type = '') {
       statusEl.className = `status${type ? ` ${type}` : ''}`;
       statusEl.textContent = message || '';
@@ -296,7 +303,7 @@
               <span class="chip">${esc(item.feed_name)}</span>
               <span class="chip" title="${esc(timeAgo(item.published))}">📅 ${esc(formatDateTime(item.published))}</span>
             </div>
-            <a class="match-link" href="${esc(item.link || '#')}" target="_blank" rel="noopener">${esc(item.title)}</a>
+            <a class="match-link" href="${safeHref(item.link)}" target="_blank" rel="noopener">${esc(item.title)}</a>
             <div class="matched-terms">
               ${(item.matched_terms || []).map(term => `<span class="chip matched-chip">👁 ${esc(term)}</span>`).join('')}
             </div>
@@ -353,8 +360,8 @@
         }
         inputEl.value = '';
         setStatus(`Added "${data.term}".`, 'success');
-        loadWatchlist();
-        loadMatches();
+        await loadWatchlist();
+        await loadMatches();
       } catch (error) {
         setStatus('Could not add term.', 'error');
       }
@@ -371,8 +378,8 @@
           return;
         }
         setStatus('Term removed.', 'success');
-        loadWatchlist();
-        loadMatches();
+        await loadWatchlist();
+        await loadMatches();
       } catch (error) {
         setStatus('Could not remove term.', 'error');
       }
@@ -399,8 +406,7 @@
       localStorage.setItem('theme', isLight ? 'light' : 'dark');
     });
 
-    loadWatchlist();
-    loadMatches();
+    loadWatchlist().then(loadMatches);
   </script>
 </body>
 </html>

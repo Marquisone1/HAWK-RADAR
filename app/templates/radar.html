@@ -653,7 +653,8 @@
       const search = getActiveSearch();
 
       // Watchlist match check
-      const haystack = [item.title, item.summary, ...(item.tags || []), ...(item.iocs?.cves || [])].join(' ').toLowerCase();
+      const iocValues = ['cves', 'ips', 'domains', 'hashes'].flatMap(type => item.iocs?.[type] || []);
+      const haystack = [item.title, item.summary, ...(item.tags || []), ...iocValues].join(' ').toLowerCase();
       const matchedTerms = watchlistTerms.filter(w => haystack.includes(w.term.toLowerCase()));
       const isWatched = matchedTerms.length > 0;
 
@@ -1088,7 +1089,7 @@
             method: 'POST', headers: { 'X-CSRFToken': CSRF }
           });
           const data = await resp.json();
-          this.textContent = `✓ ${data.new_items || 0} new`;
+          this.textContent = `✓ ${data.new_items || 0} new${data.errors ? `, ${data.errors} failed` : ''}`;
           setTimeout(() => { this.textContent = '🔄 Refresh Feeds'; this.disabled = false; }, 3000);
           applyFilters(0);
         } catch(e) {

@@ -1,6 +1,5 @@
 import logging
 import os
-import shutil
 import sqlite3
 import tempfile
 from datetime import datetime, timedelta
@@ -37,10 +36,31 @@ SECTOR_KEYWORDS = {
 }
 
 
+# JSON structure of iocs_json; terms found here would match every stored item.
+_IOC_JSON_SKELETON = '{"ips": [], "domains": [], "cves": [], "hashes": []}'
+
+
+def _iso_utc(value):
+    """Serialize a naive UTC datetime so browsers don't read it as local time."""
+    return f"{value.isoformat()}Z" if value else None
+
+
+def _watchlist_term_conditions(term):
+    conditions = [
+        FeedItem.title.icontains(term, autoescape=True),
+        FeedItem.summary.icontains(term, autoescape=True),
+        FeedItem.tags_json.icontains(term, autoescape=True),
+    ]
+    if term.lower() not in _IOC_JSON_SKELETON:
+        conditions.append(FeedItem.iocs_json.icontains(term, autoescape=True))
+    return conditions
+
+
 def _watchlist_haystack(item):
     iocs = item.iocs or {}
     haystack_parts = [item.title or "", item.summary or "", " ".join(item.tags or [])]
-    haystack_parts.extend(iocs.get("cves", []))
+    for ioc_type in ("cves", "ips", "domains", "hashes"):
+        haystack_parts.extend(iocs.get(ioc_type, []))
     return " ".join(haystack_parts).lower()
 
 
@@ -121,13 +141,7 @@ def _apply_feed_item_filters(query, args, include_feed_id=True):
         else:
             watchlist_conditions = []
             for term in terms:
-                pattern = f"%{term}%"
-                watchlist_conditions.extend([
-                    FeedItem.title.ilike(pattern),
-                    FeedItem.summary.ilike(pattern),
-                    FeedItem.tags_json.ilike(pattern),
-                    FeedItem.iocs_json.ilike(pattern),
-                ])
+                watchlist_conditions.extend(_watchlist_term_conditions(term))
             query = query.filter(db.or_(*watchlist_conditions))
     if sector and sector in SECTOR_KEYWORDS:
         sector_conditions = []
@@ -215,7 +229,7 @@ def web_feed_items():
             "feed_name": feed_names.get(item.feed_id, "Unknown"),
             "title": item.title,
             "link": item.link,
-            "published": item.published.isoformat() if item.published else None,
+            "published": _iso_utc(item.published),
             "summary": (item.summary or "")[:500],
             "severity": item.severity,
             "tags": item.tags,
@@ -249,7 +263,7 @@ def web_analytics():
 
     total = FeedItem.query.count()
     now = _dt.utcnow()
-    last_24h = FeedItem.query.filter(FeedItem.created_at >= now - _td(hours=24)).count()
+    last_24h = FeedItem.query.filter(FeedItem.published >= now - _td(hours=24)).count()
     critical_count = FeedItem.query.filter(FeedItem.severity == "critical").count()
 
     # Items by severity
@@ -304,7 +318,7 @@ def web_analytics():
             "category": f.category,
             "enabled": f.enabled,
             "item_count": FeedItem.query.filter_by(feed_id=f.id).count(),
-            "last_fetched": f.last_fetched.isoformat() if f.last_fetched else None,
+            "last_fetched": _iso_utc(f.last_fetched),
             "last_error": f.last_error,
         }
         for f in feeds
@@ -347,7 +361,7 @@ def web_feed_status():
             "url": f.url,
             "category": f.category,
             "enabled": f.enabled,
-            "last_fetched": f.last_fetched.isoformat() if f.last_fetched else None,
+            "last_fetched": _iso_utc(f.last_fetched),
             "last_error": f.last_error,
             "item_count": feed_counts.get(f.id, 0),
         }
@@ -410,13 +424,7 @@ def web_watchlist_matches():
 
     filters = []
     for term in terms:
-        pattern = f"%{term}%"
-        filters.extend([
-            FeedItem.title.ilike(pattern),
-            FeedItem.summary.ilike(pattern),
-            FeedItem.tags_json.ilike(pattern),
-            FeedItem.iocs_json.ilike(pattern),
-        ])
+        filters.extend(_watchlist_term_conditions(term))
 
     matched_items = FeedItem.query.filter(db.or_(*filters)).order_by(FeedItem.published.desc()).all()
     feed_names = {feed.id: feed.name for feed in RSSFeed.query.all()}
@@ -438,7 +446,7 @@ def web_watchlist_matches():
             "id": item.id,
             "title": item.title,
             "link": item.link,
-            "published": item.published.isoformat() if item.published else None,
+            "published": _iso_utc(item.published),
             "severity": item.severity,
             "feed_name": feed_names.get(item.feed_id, "Unknown"),
             "matched_terms": matched_terms[:5],
@@ -570,7 +578,7 @@ def web_item_related(item_id):
             "title": r.title,
             "link": r.link,
             "severity": r.severity,
-            "published": r.published.isoformat() if r.published else None,
+            "published": _iso_utc(r.published),
             "feed_name": feed_names.get(r.feed_id, "Unknown"),
             "tags": r.tags,
             "summary": (r.summary or "")[:200],
@@ -750,17 +758,21 @@ def backup_export():
             dst.close()
             src.close()
         logger.warning(f"DB exported by session user {session.get('site_user_id')}")
-        return send_file(
-            tmp.name,
-            as_attachment=True,
-            download_name=filename,
-            mimetype="application/x-sqlite3",
-        )
+        export_file = open(tmp.name, "rb")
     except Exception as exc:
-        os.unlink(tmp.name)
         logger.error(f"DB export failed: {exc}")
         flash("Export failed. See server logs.", "error")
         return redirect(url_for("radar.settings"))
+    finally:
+        # The open handle keeps the data readable until the response is sent.
+        os.unlink(tmp.name)
+
+    return send_file(
+        export_file,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/x-sqlite3",
+    )
 
 
 @radar_bp.route("/backup/run", methods=["POST"])
@@ -822,13 +834,23 @@ def backup_import():
         except Exception as exc:
             logger.warning(f"Pre-import backup failed (continuing anyway): {exc}")
 
-        shutil.copyfile(tmp.name, _DB_PATH)
+        # The backup API goes through SQLite, so WAL state stays consistent.
+        src = sqlite3.connect(tmp.name)
+        dst = sqlite3.connect(_DB_PATH, timeout=30)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+            src.close()
+        db.session.remove()
+        db.engine.dispose()
+
         logger.warning(
             f"DB restored from upload by session user {session.get('site_user_id')} "
             f"({total} bytes, tables: {tables})"
         )
-        flash("Database restored successfully. Please log in again.", "success")
         session.clear()
+        flash("Database restored successfully. Please log in again.", "success")
         return redirect(url_for("radar.login"))
 
     except Exception as exc:
@@ -921,6 +943,7 @@ def admin_delete_user(user_id):
         flash("User not found.", "error")
     else:
         username = user.username
+        Watchlist.query.filter_by(user_id=user_id).delete()
         db.session.delete(user)
         db.session.commit()
         flash(f"User '{username}' deleted.", "success")

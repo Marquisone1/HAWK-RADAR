@@ -12,7 +12,7 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3001/login')"]
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://127.0.0.1:3001/login', headers={'X-Forwarded-Proto': 'https'}), timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3

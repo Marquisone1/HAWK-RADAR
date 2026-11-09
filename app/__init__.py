@@ -11,13 +11,27 @@ from datetime import datetime
 from flask import Flask, session
 from flask_talisman import Talisman
 from flask_wtf.csrf import CSRFProtect
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .config import Config
-from .models import db, User, SiteUser, RSSFeed
+from .models import db, User, SiteUser, RSSFeed, Watchlist
 
 logger = logging.getLogger(__name__)
+
+
+@event.listens_for(Engine, "connect")
+def _configure_sqlite(dbapi_connection, _connection_record):
+    if not isinstance(dbapi_connection, sqlite3.Connection):
+        return
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA busy_timeout=15000")
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
+
 
 _CSP = {
     "default-src": "'self'",
@@ -37,7 +51,6 @@ _CSP = {
 DEFAULT_FEEDS = [
     ("CISA Cybersecurity Advisories", "https://www.cisa.gov/cybersecurity-advisories/all.xml", "CERT"),
     ("US-CERT Current Activity", "https://www.cisa.gov/uscert/ncas/current-activity.xml", "CERT"),
-    ("NIST NVD (CVEs)", "https://nvd.nist.gov/feeds/xml/cve/misc/nvd-rss.xml", "CVE"),
     ("BleepingComputer", "https://www.bleepingcomputer.com/feed/", "News"),
     ("The Hacker News", "https://feeds.feedburner.com/TheHackersNews", "News"),
     ("Krebs on Security", "https://krebsonsecurity.com/feed/", "News"),
@@ -49,6 +62,10 @@ DEFAULT_FEEDS = [
     ("BSI CERT-Bund", "https://wid.cert-bund.de/content/public/securityAdvisory/rss", "CERT (DE)"),
     ("Heise Security", "https://www.heise.de/security/rss/alert-news-atom.xml", "News (DE)"),
     ("DFN-CERT", "https://www.dfn-cert.de/news-feed/", "CERT (DE)"),
+]
+
+RETIRED_FEED_URLS = [
+    "https://nvd.nist.gov/feeds/xml/cve/misc/nvd-rss.xml",
 ]
 
 
@@ -65,14 +82,14 @@ def create_app():
 
     csrf = CSRFProtect(app)
 
-    _in_production = app.config.get("FLASK_ENV", "production") == "production"
-    _secure_cookies = app.config.get("SESSION_COOKIE_SECURE", _in_production)
+    _force_https = app.config["FORCE_HTTPS"]
+    _secure_cookies = app.config.get("SESSION_COOKIE_SECURE", _force_https)
     Talisman(
         app,
         content_security_policy=_CSP,
-        force_https=_in_production,
+        force_https=_force_https,
         session_cookie_secure=_secure_cookies,
-        strict_transport_security=_in_production,
+        strict_transport_security=_force_https,
         strict_transport_security_max_age=31536000,
         frame_options="DENY",
         x_content_type_options=True,
@@ -99,7 +116,8 @@ def create_app():
     def _ensure_session_role():
         if 'site_user_id' in session:
             user = SiteUser.query.get(session['site_user_id'])
-            if not user:
+            # The username check stops a stale session from adopting a reused user id.
+            if not user or user.username != session.get('site_username'):
                 session.clear()
                 return
             session['site_role'] = user.role
@@ -173,7 +191,8 @@ def _start_feed_scheduler(app):
         while True:
             try:
                 with app.app_context():
-                    from .feed_service import refresh_all_feeds
+                    from .feed_service import refresh_all_feeds, reprocess_items_if_needed
+                    reprocess_items_if_needed()
                     refresh_all_feeds()
             except Exception as exc:
                 logger.warning(f"Feed refresh failed: {exc}")
@@ -262,6 +281,23 @@ def _bootstrap_db(app):
             logger.info(f"Bootstrap: migrated {migrated} retired feed URL(s).")
         except IntegrityError:
             db.session.rollback()
+
+    # ── Disable feeds whose upstream no longer exists ──
+    retired_feeds = RSSFeed.query.filter(RSSFeed.url.in_(RETIRED_FEED_URLS), RSSFeed.enabled.is_(True)).all()
+    for feed in retired_feeds:
+        feed.enabled = False
+        feed.last_error = "Feed retired upstream; disabled automatically."
+    if retired_feeds:
+        db.session.commit()
+        logger.info(f"Bootstrap: disabled {len(retired_feeds)} retired feed(s).")
+
+    # ── Remove watchlist terms left behind by deleted users ──
+    orphaned_terms = Watchlist.query.filter(
+        Watchlist.user_id.notin_(db.session.query(SiteUser.id))
+    ).delete(synchronize_session=False)
+    db.session.commit()
+    if orphaned_terms:
+        logger.info(f"Bootstrap: removed {orphaned_terms} orphaned watchlist term(s).")
 
     # ── Seed missing default RSS feeds ──
     existing_urls = {row[0] for row in db.session.query(RSSFeed.url).all()}

@@ -46,20 +46,27 @@ Do not treat this repository as production-ready security tooling.
 
 ## Quick Start
 
-1. Build and run:
+1. Create your config:
+   - cp .env.example .env
+2. Build and run:
    - docker compose up --build -d
-2. Open:
+3. Open:
    - http://127.0.0.1:3001
+4. Sign in as `admin`. The generated password is in the first-boot logs (`docker compose logs hawk-radar`) and in `data/first_boot_credentials.txt`.
+
+## Serving Over HTTPS
+
+`.env.example` is set up for plain HTTP on localhost. Behind an HTTPS reverse proxy, set `FORCE_HTTPS=true` and `SESSION_COOKIE_SECURE=true` in `.env`, and have the proxy send `X-Forwarded-Proto: https`.
+
+If `FORCE_HTTPS` is not set, it defaults to on when `FLASK_ENV=production`.
 
 ## IOC Refresh Note
 
 IOC extraction rules may change over time as false positives are tuned out.
 
-If you are using an existing database and update to a version with new IOC extraction logic, you may want to reprocess stored items so analytics and filters reflect the newer rules.
-
 Typical example: benign provider/source domains may have been extracted by older rules and later removed by newer ones.
 
-The application will use the latest rules for newly ingested items automatically, but existing rows in the database keep their stored IOC data until you re-extract or rebuild that data.
+When a release changes these rules, the application reprocesses stored items automatically in the background shortly after startup, recalculating severity, tags, and IOCs. Stars and other item data are kept.
 
 ## Security Note
 

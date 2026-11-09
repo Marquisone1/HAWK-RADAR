@@ -14,12 +14,13 @@ COPY --from=builder /install /usr/local
 WORKDIR /app
 COPY . .
 
-RUN mkdir -p /data/backups && chown -R appuser:appuser /app /data
+RUN mkdir -p /data/backups && chown -R appuser:appuser /app /data && chmod +x /app/scripts/docker-entrypoint.sh
 
-USER appuser
 EXPOSE 3001
 
 ENV FLASK_ENV=production
+
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]
 
 CMD ["gunicorn", "wsgi:app", \
      "--bind", "0.0.0.0:3001", \

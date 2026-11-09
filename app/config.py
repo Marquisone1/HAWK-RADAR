@@ -42,6 +42,10 @@ class Config:
     FLASK_ENV = os.getenv("FLASK_ENV", "production")
     FLASK_PORT = int(os.getenv("FLASK_PORT", 8000))
 
+    # Redirect to HTTPS and send HSTS. Defaults to on in production; set to
+    # "false" when the app is served over plain HTTP (e.g. local use).
+    FORCE_HTTPS = os.getenv("FORCE_HTTPS", str(FLASK_ENV == "production")).lower() != "false"
+
     JSON_SORT_KEYS = False
 
     PERMANENT_SESSION_LIFETIME = 28800

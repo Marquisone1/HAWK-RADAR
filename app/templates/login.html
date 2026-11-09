@@ -151,7 +151,7 @@
       box-shadow: 0 2px 8px rgba(76,201,240,.15);
     }
 
-    .alert-error {
+    .alert-error, .alert-success {
       background: #231417;
       border: 1px solid #6d2a2a;
       color: #ff9b9b;
@@ -161,6 +161,7 @@
       margin-bottom: 24px;
       animation: fadeIn .3s ease-out;
     }
+    .alert-success { background: #12231a; border-color: #2a6d45; color: #80ed99; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 
     @media (max-width: 480px) {
@@ -182,6 +183,9 @@
     {% if error %}
     <div class="alert-error">{{ error }}</div>
     {% endif %}
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+    <div class="alert-{{ category }}">{{ message }}</div>
+    {% endfor %}
 
     <form method="POST" action="/login" autocomplete="on">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
