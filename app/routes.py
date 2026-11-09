@@ -651,7 +651,7 @@ def login():
             return redirect(url_for("radar.index"))
 
         logger.warning(f"Failed login attempt: ip={request.remote_addr}")
-        error = "Invalid username or password."
+        error = "Invalid username or password"
 
     return render_template("login.html", error=error)
 
@@ -690,7 +690,7 @@ def settings():
 
     if request.method == "POST":
         if _is_rate_limited(request.remote_addr, limit=_SETTINGS_RATE_LIMIT, bucket="settings"):
-            flash("Too many requests. Please wait a moment and try again.", "error")
+            flash("Too many requests. Please wait a moment and try again", "error")
             return redirect(url_for("radar.settings")), 429
 
         new_username = request.form.get("username", "").strip()[:80]
@@ -700,14 +700,14 @@ def settings():
         errors = []
 
         if not new_username:
-            errors.append("Username cannot be empty.")
+            errors.append("Username cannot be empty")
         elif new_username != user.username:
             if SiteUser.query.filter_by(username=new_username).first():
-                errors.append("That username is already taken.")
+                errors.append("That username is already taken")
 
         if new_password:
             if new_password != confirm:
-                errors.append("Passwords do not match.")
+                errors.append("Passwords do not match")
             else:
                 errors.extend(validate_password_strength(new_password))
 
@@ -721,7 +721,7 @@ def settings():
                 logger.warning(f"Password changed for user id={user.id} ip={request.remote_addr}")
             db.session.commit()
             session["site_username"] = new_username
-            flash("Settings saved successfully.", "success")
+            flash("Settings saved successfully", "success")
             return redirect(url_for("radar.settings"))
 
     return render_template(
@@ -761,7 +761,7 @@ def backup_export():
         export_file = open(tmp.name, "rb")
     except Exception as exc:
         logger.error(f"DB export failed: {exc}")
-        flash("Export failed. See server logs.", "error")
+        flash("Export failed, see server logs", "error")
         return redirect(url_for("radar.settings"))
     finally:
         # The open handle keeps the data readable until the response is sent.
@@ -796,11 +796,11 @@ def backup_run():
 def backup_import():
     uploaded = request.files.get("db_file")
     if not uploaded or not uploaded.filename:
-        flash("No file selected.", "error")
+        flash("No file selected", "error")
         return redirect(url_for("radar.settings"))
 
     if not uploaded.filename.endswith(".db"):
-        flash("Invalid file type. Only .db files are accepted.", "error")
+        flash("Invalid file type, only .db files are accepted", "error")
         return redirect(url_for("radar.settings"))
 
     tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
@@ -850,7 +850,7 @@ def backup_import():
             f"({total} bytes, tables: {tables})"
         )
         session.clear()
-        flash("Database restored successfully. Please log in again.", "success")
+        flash("Database restored successfully, sign in again", "success")
         return redirect(url_for("radar.login"))
 
     except Exception as exc:
@@ -908,12 +908,12 @@ def admin_create_user():
 
     errors = []
     if not username:
-        errors.append("Username cannot be empty.")
+        errors.append("Username cannot be empty")
     elif SiteUser.query.filter_by(username=username).first():
-        errors.append("Username already taken.")
+        errors.append("Username already taken")
 
     if not password:
-        errors.append("Password is required.")
+        errors.append("Password is required")
     else:
         errors.extend(validate_password_strength(password))
 
@@ -925,7 +925,7 @@ def admin_create_user():
         new_user.set_password(password)
         db.session.add(new_user)
         db.session.commit()
-        flash(f"User '{username}' created as {role}.", "success")
+        flash(f"User '{username}' created as {role}", "success")
         logger.info(f"Admin {session.get('site_username')} created user '{username}' (role={role})")
 
     return redirect(url_for("radar.admin_panel"))
@@ -935,18 +935,18 @@ def admin_create_user():
 @require_admin
 def admin_delete_user(user_id):
     if user_id == session.get("site_user_id"):
-        flash("You cannot delete your own account.", "error")
+        flash("You cannot delete your own account", "error")
         return redirect(url_for("radar.admin_panel"))
 
     user = SiteUser.query.get(user_id)
     if not user:
-        flash("User not found.", "error")
+        flash("User not found", "error")
     else:
         username = user.username
         Watchlist.query.filter_by(user_id=user_id).delete()
         db.session.delete(user)
         db.session.commit()
-        flash(f"User '{username}' deleted.", "success")
+        flash(f"User '{username}' deleted", "success")
         logger.warning(f"Admin {session.get('site_username')} deleted user '{username}' id={user_id}")
 
     return redirect(url_for("radar.admin_panel"))
@@ -956,16 +956,16 @@ def admin_delete_user(user_id):
 @require_admin
 def admin_toggle_role(user_id):
     if user_id == session.get("site_user_id"):
-        flash("You cannot change your own role.", "error")
+        flash("You cannot change your own role", "error")
         return redirect(url_for("radar.admin_panel"))
 
     user = SiteUser.query.get(user_id)
     if not user:
-        flash("User not found.", "error")
+        flash("User not found", "error")
     else:
         user.role = "analyst" if user.role == "admin" else "admin"
         db.session.commit()
-        flash(f"User '{user.username}' is now {user.role}.", "success")
+        flash(f"User '{user.username}' is now {user.role}", "success")
         logger.info(f"Admin {session.get('site_username')} changed role of '{user.username}' to {user.role}")
 
     return redirect(url_for("radar.admin_panel"))
@@ -985,9 +985,9 @@ def admin_add_feed():
 
     errors = []
     if not name:
-        errors.append("Feed name cannot be empty.")
+        errors.append("Feed name cannot be empty")
     if not url:
-        errors.append("Feed URL cannot be empty.")
+        errors.append("Feed URL cannot be empty")
     elif not url.startswith(("http://", "https://")):
         errors.append("Feed URL must start with http:// or https://")
     else:
@@ -1016,9 +1016,9 @@ def admin_add_feed():
                 pass  # DNS resolution failure — allow, feedparser will handle the error
 
         if blocked:
-            errors.append("Feed URL must not point to internal or private network addresses.")
+            errors.append("Feed URL must not point to internal or private network addresses")
         elif RSSFeed.query.filter_by(url=url).first():
-            errors.append("A feed with this URL already exists.")
+            errors.append("A feed with this URL already exists")
 
     if errors:
         for e in errors:
@@ -1027,7 +1027,7 @@ def admin_add_feed():
         feed = RSSFeed(name=name, url=url, category=category, enabled=True)
         db.session.add(feed)
         db.session.commit()
-        flash(f"Feed '{name}' added.", "success")
+        flash(f"Feed '{name}' added", "success")
         logger.info(f"Admin {session.get('site_username')} added feed '{name}' ({url})")
 
     return redirect(url_for("radar.admin_panel"))
@@ -1038,12 +1038,12 @@ def admin_add_feed():
 def admin_toggle_feed(feed_id):
     feed = RSSFeed.query.get(feed_id)
     if not feed:
-        flash("Feed not found.", "error")
+        flash("Feed not found", "error")
     else:
         feed.enabled = not feed.enabled
         db.session.commit()
         state = "enabled" if feed.enabled else "disabled"
-        flash(f"Feed '{feed.name}' {state}.", "success")
+        flash(f"Feed '{feed.name}' {state}", "success")
         logger.info(f"Admin {session.get('site_username')} {state} feed '{feed.name}'")
 
     return redirect(url_for("radar.admin_panel"))
@@ -1054,12 +1054,12 @@ def admin_toggle_feed(feed_id):
 def admin_delete_feed(feed_id):
     feed = RSSFeed.query.get(feed_id)
     if not feed:
-        flash("Feed not found.", "error")
+        flash("Feed not found", "error")
     else:
         name = feed.name
         db.session.delete(feed)
         db.session.commit()
-        flash(f"Feed '{name}' and all its items deleted.", "success")
+        flash(f"Feed '{name}' and all its items deleted", "success")
         logger.warning(f"Admin {session.get('site_username')} deleted feed '{name}' id={feed_id}")
 
     return redirect(url_for("radar.admin_panel"))

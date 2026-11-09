@@ -1,0 +1,7 @@
+{% macro icon(name) -%}
+<svg class="icon" aria-hidden="true"><use href="{{ url_for('static', filename='icons.svg') }}#{{ name }}"></use></svg>
+{%- endmacro %}
+
+{% macro nav_item(endpoint, label, icon_name) -%}
+<a href="{{ url_for(endpoint) }}" class="nav-item{% if request.endpoint == endpoint %} active{% endif %}"{% if request.endpoint == endpoint %} aria-current="page"{% endif %}>{{ icon(icon_name) }}<span>{{ label }}</span></a>
+{%- endmacro %}

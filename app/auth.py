@@ -70,13 +70,13 @@ _MIN_PASSWORD_LEN = 12
 def validate_password_strength(password: str) -> list[str]:
     errors = []
     if len(password) < _MIN_PASSWORD_LEN:
-        errors.append(f"Password must be at least {_MIN_PASSWORD_LEN} characters.")
+        errors.append(f"Password must be at least {_MIN_PASSWORD_LEN} characters")
     if not re.search(r"[A-Z]", password):
-        errors.append("Password must contain at least one uppercase letter.")
+        errors.append("Password must contain at least one uppercase letter")
     if not re.search(r"[a-z]", password):
-        errors.append("Password must contain at least one lowercase letter.")
+        errors.append("Password must contain at least one lowercase letter")
     if not re.search(r"[0-9]", password):
-        errors.append("Password must contain at least one digit.")
+        errors.append("Password must contain at least one digit")
     if not re.search(r"[!@#$%^&*()\-_=+\[\]{};:',.<>?/\\|`~]", password):
-        errors.append("Password must contain at least one special character.")
+        errors.append("Password must contain at least one special character")
     return errors
